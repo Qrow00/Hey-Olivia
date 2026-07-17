@@ -1,0 +1,17 @@
+{
+  "name": "jarvis",
+  "version": "0.1.0",
+  "description": "J.A.R.V.I.S. - Personal AI Assistant",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
