@@ -4,7 +4,8 @@ export type ScreenStatus = "inactive" | "starting" | "active" | "paused";
 export interface CaptureConfig {
   fps: number;
   quality: number;
-  resolution: { width: number; height: number };
+  width: number;
+  height: number;
   format: "jpeg" | "png";
 }
 
@@ -25,4 +26,7 @@ export interface ScreenShareSession {
   startedAt: Date;
   capture: CaptureConfig;
   analysis: ScreenAnalysis;
+  viewerCount: number;
+  frameCount: number;
+  lastFrameAt: Date | null;
 }

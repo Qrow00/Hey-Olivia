@@ -22,11 +22,22 @@ export interface Device {
   tailscaleIp: string;
   capabilities: DeviceCapability[];
   lastSeen: Date;
+  lastHeartbeat: Date | null;
   battery: number;
   signal: SignalStrength;
+  osVersion: string;
+  appVersion: string;
+  metadata: Record<string, unknown>;
 }
 
 export interface DeviceRegistry {
   userId: string;
   devices: Device[];
+}
+
+export interface DeviceStatusSummary {
+  total: number;
+  online: number;
+  offline: number;
+  sleeping: number;
 }

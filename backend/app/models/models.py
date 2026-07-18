@@ -6,6 +6,7 @@ from app.models.database import Base
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = {"extend_existing": True}
 
     id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
@@ -19,6 +20,7 @@ class User(Base):
 
 class Device(Base):
     __tablename__ = "devices"
+    __table_args__ = {"extend_existing": True}
 
     id = Column(String, primary_key=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
@@ -30,14 +32,19 @@ class Device(Base):
     capabilities = Column(JSON, default=list)
     status = Column(String, default="offline")
     last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_heartbeat = Column(DateTime, nullable=True)
     battery = Column(Integer, default=100)
     signal = Column(String, default="strong")
+    os_version = Column(String, default="")
+    app_version = Column(String, default="")
+    extra_data = Column("metadata", JSON, default=dict)
 
     user = relationship("User", back_populates="devices")
 
 
 class Conversation(Base):
     __tablename__ = "conversations"
+    __table_args__ = {"extend_existing": True}
 
     id = Column(String, primary_key=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
@@ -50,6 +57,7 @@ class Conversation(Base):
 
 class Message(Base):
     __tablename__ = "messages"
+    __table_args__ = {"extend_existing": True}
 
     id = Column(String, primary_key=True)
     conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False)
@@ -64,6 +72,7 @@ class Message(Base):
 
 class Command(Base):
     __tablename__ = "commands"
+    __table_args__ = {"extend_existing": True}
 
     id = Column(String, primary_key=True)
     name = Column(String, nullable=False)

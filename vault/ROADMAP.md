@@ -16,30 +16,30 @@
 | ~~Database setup~~ | ~~SQLite/Realm local + server DB schemas~~ |
 | Auth flow | Simple token-based device pairing |
 
-## Phase 2: Core Voice (Week 3-4)
+## Phase 2: Core Voice (Week 3-4) ✅ DONE
 | Task | Details |
 |------|---------|
-| STT integration | Whisper/Vosk on server |
-| TTS integration | Piper/Edge-TTS |
-| LLM integration | Ollama (llama3.2) |
-| WebSocket pipeline | Real-time voice streaming |
-| Avatar state sync | Voice → avatar animation |
+| ~~STT integration~~ | ~~Whisper on server (base model)~~ |
+| ~~TTS integration~~ | ~~Edge-TTS with voice selection~~ |
+| ~~LLM integration~~ | ~~Ollama (llama3.2)~~ |
+| ~~WebSocket pipeline~~ | ~~Real-time voice streaming with avatar sync~~ |
+| ~~Avatar state sync~~ | ~~5-state visual system with animations~~ |
 
-## Phase 3: Device Management (Week 5-6)
+## Phase 3: Device Management (Week 5-6) ✅ DONE
 | Task | Details |
 |------|---------|
-| Device registry | Add/remove/view devices |
-| Status monitoring | Online/offline, battery, signal |
-| Capabilities detection | Auto-discover device features |
-| Multi-device dashboard | UI for all connected devices |
+| ~~Device registry~~ | ~~Add/remove/view devices with CRUD API~~ |
+| ~~Status monitoring~~ | ~~Online/offline, battery, signal, heartbeat~~ |
+| ~~Capabilities detection~~ | ~~Auto-discover device features by platform~~ |
+| ~~Multi-device dashboard~~ | ~~Real-time UI with filters, stats, actions~~ |
 
-## Phase 4: Screen Sharing (Week 7-8)
+## Phase 4: Screen Sharing (Week 7-8) ✅ DONE
 | Task | Details |
 |------|---------|
-| Screen capture | Android (MediaProjection), Desktop (FFmpeg/GDI) |
-| WebSocket streaming | JPEG frames over WS |
-| Basic analysis | OCR, object detection (optional) |
-| Remote view | View device screens from any client |
+| ~~Screen capture~~ | ~~Flutter platform channel for native capture~~ |
+| ~~WebSocket streaming~~ | ~~JPEG frames over WS with session management~~ |
+| ~~Basic analysis~~ | ~~LLM-powered screen analysis endpoint~~ |
+| ~~Remote view~~ | ~~Full viewer UI with fullscreen, viewer count, live indicator~~ |
 
 ## Phase 5: Smart Home & Polish (Week 9-10)
 | Task | Details |

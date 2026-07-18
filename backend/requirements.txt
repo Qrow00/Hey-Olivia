@@ -8,3 +8,10 @@ python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 python-multipart>=0.0.9
 httpx>=0.27.0
+
+# Voice & AI
+openai-whisper>=20231117
+edge-tts>=6.1.9
+ollama>=0.4.0
+numpy>=1.26.0
+soundfile>=0.12.0

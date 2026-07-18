@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import devices, conversations, settings, commands, websocket
+from app.routers import devices, conversations, settings, commands, websocket, voice, screen_share
 from app.models.database import engine, Base
 
 app = FastAPI(title="J.A.R.V.I.S. API", version="0.1.0")
@@ -18,6 +18,8 @@ app.include_router(conversations.router, prefix="/api/conversations", tags=["con
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(commands.router, prefix="/api/commands", tags=["commands"])
 app.include_router(websocket.router, tags=["websocket"])
+app.include_router(voice.router, prefix="/api/voice", tags=["voice"])
+app.include_router(screen_share.router, prefix="/api/screen", tags=["screen-share"])
 
 
 @app.on_event("startup")
