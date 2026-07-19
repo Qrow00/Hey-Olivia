@@ -6,6 +6,7 @@ import 'screens/settings_screen.dart';
 import 'screens/camera_screen.dart';
 import 'screens/wearable_screen.dart';
 import 'screens/smart_home_screen.dart';
+import 'screens/personality_screen.dart';
 import 'services/websocket_service.dart';
 import 'services/device_service.dart';
 import 'services/screen_share_service.dart';
@@ -105,6 +106,7 @@ class _MainScreenState extends State<MainScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.visibility, size: 20), label: 'Vision'),
           BottomNavigationBarItem(icon: Icon(Icons.watch, size: 20), label: 'Health'),
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined, size: 20), label: 'Smart'),
+          BottomNavigationBarItem(icon: Icon(Icons.psychology, size: 20), label: 'Mind'),
           BottomNavigationBarItem(icon: Icon(Icons.settings, size: 20), label: 'Settings'),
         ],
       ),
@@ -118,6 +120,7 @@ class _MainScreenState extends State<MainScreen> {
         CameraScreen(cameraService: _cameraService, visionService: _visionService),
         WearableScreen(wearableService: _wearableService),
         SmartHomeScreen(smartHomeService: _smartHomeService),
+        PersonalityScreen(),
         SettingsScreen(),
       ];
 }

@@ -1,11 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import devices, conversations, settings, commands, websocket, voice, screen_share, cameras, wearables, smart_home, vision, plugins
+from app.routers import (
+    devices, conversations, settings, commands, websocket, voice,
+    screen_share, cameras, wearables, smart_home, vision, plugins,
+    personality, voice_profiles,
+)
 from app.models.database import engine, Base
 from app.plugins.manager import plugin_manager
 from app.plugins.motion_detector import MotionDetectorPlugin
 
-app = FastAPI(title="J.A.R.V.I.S. API", version="1.0.0")
+app = FastAPI(title="J.A.R.V.I.S. API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +31,8 @@ app.include_router(wearables.router, prefix="/api/v1/wearables", tags=["wearable
 app.include_router(smart_home.router, prefix="/api/v1/smart-home", tags=["smart-home"])
 app.include_router(vision.router, prefix="/api/v1/vision", tags=["vision"])
 app.include_router(plugins.router, prefix="/api/v1/plugins", tags=["plugins"])
+app.include_router(personality.router, prefix="/api/v1/personality", tags=["personality"])
+app.include_router(voice_profiles.router, prefix="/api/v1/voice-profiles", tags=["voice-profiles"])
 
 
 @app.on_event("startup")
@@ -36,12 +42,14 @@ async def startup():
 
     await plugin_manager.register_plugin(MotionDetectorPlugin())
 
+    print("J.A.R.V.I.S. v2.0.0 initialized")
+
 
 @app.get("/")
 async def root():
     return {
         "name": "J.A.R.V.I.S.",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "status": "online",
         "api_version": "v1",
     }
@@ -63,5 +71,7 @@ async def api_root():
             "smart-home": "/api/v1/smart-home",
             "vision": "/api/v1/vision",
             "plugins": "/api/v1/plugins",
+            "personality": "/api/v1/personality",
+            "voice-profiles": "/api/v1/voice-profiles",
         },
     }

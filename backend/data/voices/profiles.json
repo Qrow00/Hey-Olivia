@@ -1,0 +1,60 @@
+{
+  "active_profile": "jarvis",
+  "profiles": [
+    {
+      "id": "jarvis",
+      "name": "J.A.R.V.I.S.",
+      "voice": "en-US-GuyNeural",
+      "rate": 0,
+      "pitch": 0,
+      "volume": 1.0,
+      "description": "British butler, calm and precise",
+      "language": "en-US",
+      "is_default": true
+    },
+    {
+      "id": "friday",
+      "name": "Friday",
+      "voice": "en-US-JennyNeural",
+      "rate": 5,
+      "pitch": 2,
+      "volume": 1.0,
+      "description": "Friendly and efficient",
+      "language": "en-US",
+      "is_default": false
+    },
+    {
+      "id": "edith",
+      "name": "Edith",
+      "voice": "en-US-AriaNeural",
+      "rate": -5,
+      "pitch": -1,
+      "volume": 1.0,
+      "description": "Warm and measured",
+      "language": "en-US",
+      "is_default": false
+    },
+    {
+      "id": "tobby",
+      "name": "Tobby",
+      "voice": "en-US-ChristopherNeural",
+      "rate": 10,
+      "pitch": 3,
+      "volume": 1.0,
+      "description": "Energetic and upbeat",
+      "language": "en-US",
+      "is_default": false
+    },
+    {
+      "id": "karen",
+      "name": "Karen",
+      "voice": "en-US-SaraNeural",
+      "rate": 0,
+      "pitch": 1,
+      "volume": 1.0,
+      "description": "Professional and clear",
+      "language": "en-US",
+      "is_default": false
+    }
+  ]
+}

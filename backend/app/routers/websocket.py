@@ -100,6 +100,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 await handle_vision_observe_start(websocket, message)
             elif msg_type == "vision_observe_stop":
                 await handle_vision_observe_stop(websocket, message)
+            elif msg_type == "voice_profile_switch":
+                await handle_voice_profile_switch(websocket, message)
+            elif msg_type == "personality_update":
+                await handle_personality_update(websocket, message)
             else:
                 await broadcast(message, websocket)
 
@@ -172,6 +176,8 @@ async def handle_device_status_update(websocket: WebSocket, message: dict):
 
 
 async def handle_voice_chunk(websocket: WebSocket, message: dict):
+    from app.services.voice_profile_service import voice_profile_service
+
     await websocket.send_json({
         "type": "avatar_state",
         "state": "listening"
@@ -204,7 +210,8 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
             })
 
             response_text = execution.get("result", {}).get("message", "Command executed.")
-            tts_audio = await voice_service.text_to_speech(response_text)
+            profile = voice_profile_service.get_active_profile()
+            tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice)
 
             await websocket.send_json({
                 "type": "avatar_state",
@@ -229,7 +236,7 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
 
         result = await voice_service.voice_pipeline(
             audio_data=audio_data,
-            system_prompt=message.get("system_prompt", "You are J.A.R.V.I.S., a helpful AI assistant.")
+            system_prompt=message.get("system_prompt"),
         )
 
         await websocket.send_json({
@@ -263,6 +270,8 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
 
 
 async def handle_text_message(websocket: WebSocket, message: dict):
+    from app.services.personality_service import personality_service
+
     await websocket.send_json({
         "type": "avatar_state",
         "state": "thinking"
@@ -298,7 +307,7 @@ async def handle_text_message(websocket: WebSocket, message: dict):
 
         result = await voice_service.chat_completion(
             message=text,
-            system_prompt=message.get("system_prompt", "You are J.A.R.V.I.S., a helpful AI assistant."),
+            system_prompt=personality_service.get_system_prompt(),
             conversation_history=message.get("conversation_history")
         )
 
@@ -761,5 +770,58 @@ async def handle_vision_observe_stop(websocket: WebSocket, message: dict):
     await websocket.send_json({
         "type": "vision_observe_stopped",
         "session_id": session_id,
+        "result": result,
+    })
+
+
+async def handle_voice_profile_switch(websocket: WebSocket, message: dict):
+    from app.services.voice_profile_service import voice_profile_service
+
+    profile_id = message.get("profile_id")
+    if not profile_id:
+        await websocket.send_json({
+            "type": "error",
+            "message": "profile_id required",
+        })
+        return
+
+    result = voice_profile_service.set_active(profile_id)
+    await websocket.send_json({
+        "type": "voice_profile_changed",
+        "result": result,
+    })
+
+
+async def handle_personality_update(websocket: WebSocket, message: dict):
+    from app.services.personality_service import personality_service
+
+    update_type = message.get("update_type")
+
+    if update_type == "style":
+        result = personality_service.update_style(**{
+            k: v for k, v in message.items()
+            if k in ["formality", "humor", "verbosity", "empathy", "directness", "enthusiasm"]
+        })
+    elif update_type == "opinion":
+        result = personality_service.learn_opinion(
+            message.get("topic", ""),
+            message.get("stance", ""),
+        )
+    elif update_type == "preference":
+        result = personality_service.learn_preference(
+            message.get("key", ""),
+            message.get("value", ""),
+        )
+    elif update_type == "feedback":
+        result = personality_service.adjust_from_feedback(message.get("feedback_type", ""))
+    elif update_type == "name":
+        personality_service.preferred_name = message.get("name", "Boss")
+        personality_service._save()
+        result = {"status": "updated", "name": personality_service.preferred_name}
+    else:
+        result = {"status": "error", "message": f"Unknown update type: {update_type}"}
+
+    await websocket.send_json({
+        "type": "personality_updated",
         "result": result,
     })

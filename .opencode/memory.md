@@ -72,6 +72,14 @@
   - Documentation: SETUP.md, API_DOCS.md with full endpoint reference
   - Testing: 17 tests passing (API routes, command registry, plugins)
   - Installed missing deps: opencv-python, paho-mqtt, pytest, pytest-asyncio
+- 2026-07-19: Phase 7 — Doc Plan Features (Selected)
+  - Voice profiles: switchable TTS voices (JARVIS, Friday, Edith, Tobby, Karen)
+  - Personality layer: style sliders, opinions, self-reflection, feedback
+  - Voice profile API: /api/v1/voice-profiles/
+  - Personality API: /api/v1/personality/
+  - WebSocket: voice_profile_switch, personality_update handlers
+  - Flutter: Personality screen with style controls and feedback
+  - Evaluated but skipped: Silero VAD (2GB torch), ChromaDB (overkill), skills (duplicates command_registry)
 - 2026-07-19: Phase 5.6 Complete — AI Vision System
   - Vision service with llava:7b integration for camera analysis
   - Proactive observation modes (watch, scan, alert)
@@ -121,4 +129,8 @@
   - API versioning (/api/v1/)
   - Full documentation (SETUP.md, API_DOCS.md)
   - 17 tests passing
-  - **All MVP phases complete**
+- **2026-07-19:** Sixth session
+  - Evaluated doc plan features (VAD, ChromaDB, personality, voice profiles, skills)
+  - Kept: voice profiles (switchable TTS), personality layer (style/feedback)
+  - Rejected: Silero VAD (2GB torch, marginal benefit), ChromaDB (overkill), skills (duplicates command_registry)
+  - All MVP phases + doc plan features complete
