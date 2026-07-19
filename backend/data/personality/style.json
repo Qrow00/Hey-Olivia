@@ -1,0 +1,15 @@
+{
+  "style": {
+    "formality": 1.0,
+    "humor": 0.5094876660341555,
+    "verbosity": 0.0,
+    "empathy": 0.7580645161290319,
+    "directness": 0.5,
+    "enthusiasm": 0.6745730550284633
+  },
+  "preferred_name": "Toshi",
+  "user_preferences": {
+    "drink": "coffee"
+  },
+  "interaction_count": 0
+}

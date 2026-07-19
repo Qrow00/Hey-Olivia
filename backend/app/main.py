@@ -45,6 +45,13 @@ async def startup():
     print("J.A.R.V.I.S. v2.0.0 initialized")
 
 
+@app.on_event("shutdown")
+async def shutdown():
+    from app.services.conversation_memory import conversation_memory
+    conversation_memory.save_on_exit()
+    print("J.A.R.V.I.S. shutdown — memory saved")
+
+
 @app.get("/")
 async def root():
     return {

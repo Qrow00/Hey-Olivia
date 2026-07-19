@@ -57,6 +57,7 @@ class PersonalityService:
         self.preferred_name: str = "Boss"
         self.user_preferences: dict = {}
         self.interaction_count: int = 0
+        self.introduced: bool = False
 
         self._load()
 
@@ -68,6 +69,9 @@ class PersonalityService:
             self.preferred_name = data.get("preferred_name", "Boss")
             self.user_preferences = data.get("user_preferences", {})
             self.interaction_count = data.get("interaction_count", 0)
+            self.introduced = data.get("introduced", False)
+            if not self.introduced and self.preferred_name != "Boss":
+                self.introduced = True
 
         opinions_file = self.data_dir / "opinions.json"
         if opinions_file.exists():
@@ -85,6 +89,7 @@ class PersonalityService:
             "preferred_name": self.preferred_name,
             "user_preferences": self.user_preferences,
             "interaction_count": self.interaction_count,
+            "introduced": self.introduced,
         }, indent=2))
 
         opinions_file = self.data_dir / "opinions.json"
@@ -111,7 +116,13 @@ class PersonalityService:
             f"You are JARVIS, an AI assistant. Address the user as '{self.preferred_name}'. "
             f"Your communication style: {style_desc}. "
             f"You have your own opinions and personality. "
-            f"You remember past conversations and learn from them."
+            f"You remember past conversations and learn from them. "
+            f"You have persistent memory — the user can ask you to remember or recall things. "
+            f"When the user tells you to remember something, confirm it naturally. "
+            f"When asked to recall, share what you know. "
+            f"You automatically learn facts, preferences, and rules from what the user says. "
+            f"If the user corrects you, remember the correction permanently. "
+            f"If you are unsure about something, say so honestly."
             f"{opinion_text}"
         )
 

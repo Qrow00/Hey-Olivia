@@ -2,6 +2,11 @@ import io
 import tempfile
 import os
 from typing import Optional
+
+_ffmpeg_dir = os.path.join(os.path.expanduser("~"), "ffmpeg")
+if os.path.isdir(_ffmpeg_dir):
+    os.environ["PATH"] = _ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
+
 import whisper
 import edge_tts
 import ollama
@@ -11,6 +16,8 @@ import soundfile as sf
 from app.services.voice_profile_service import voice_profile_service
 from app.services.personality_service import personality_service
 from app.services.command_registry import command_registry
+from app.services.conversation_memory import conversation_memory
+from app.services.knowledge_service import knowledge_service
 
 
 class VoiceService:
@@ -19,14 +26,13 @@ class VoiceService:
         self.tts_voice = "en-US-GuyNeural"
         self.llm_model = "llama3.2"
         self._initialized = False
-        self._conversation_history: list[dict] = []
-        self._max_history = 20
+        self._max_history = 50
 
     async def initialize(self):
         if self._initialized:
             return
-        print("Loading Whisper STT model...")
-        self.stt_model = whisper.load_model("base")
+        print("Loading Whisper STT model (tiny, CPU)...")
+        self.stt_model = whisper.load_model("tiny", device="cpu")
         print("Voice service initialized")
         self._initialized = True
 
@@ -86,7 +92,15 @@ class VoiceService:
         messages = [{"role": "system", "content": system_prompt}]
 
         if conversation_history:
-            messages.extend(conversation_history)
+            messages.extend(conversation_history[-self._max_history:])
+        else:
+            history = conversation_memory.get_recent_history(self._max_history)
+            if history:
+                messages.extend(history)
+
+        knowledge_context = knowledge_service.get_context_for_llm(message)
+        if knowledge_context:
+            messages.insert(1, {"role": "system", "content": f"Your knowledge about the user:\n{knowledge_context}\n\nUse this information naturally in your responses. Do not say 'according to my notes' or 'you told me' — just know it."})
 
         messages.append({"role": "user", "content": message})
 
@@ -95,8 +109,17 @@ class VoiceService:
             messages=messages
         )
 
+        assistant_response = response["message"]["content"]
+        conversation_memory.add_message("user", message)
+        conversation_memory.add_message("assistant", assistant_response)
+
+        try:
+            knowledge_service.extract_and_store(message, assistant_response)
+        except:
+            pass
+
         return {
-            "response": response["message"]["content"],
+            "response": assistant_response,
             "model": self.llm_model,
             "done": response.get("done", True)
         }
@@ -113,7 +136,7 @@ class VoiceService:
         llm_result = await self.chat_completion(
             message=stt_result["text"],
             system_prompt=system_prompt or personality_service.get_system_prompt(),
-            conversation_history=conversation_history or self._conversation_history[-self._max_history:]
+            conversation_history=conversation_history,
         )
 
         profile = voice_profile_service.get_active_profile()
@@ -123,9 +146,6 @@ class VoiceService:
             rate=profile.rate,
             pitch=profile.pitch,
         )
-
-        self._conversation_history.append({"role": "user", "content": stt_result["text"]})
-        self._conversation_history.append({"role": "assistant", "content": llm_result["response"]})
 
         return {
             "transcription": stt_result["text"],

@@ -1,4 +1,7 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'screens/home_screen.dart';
 import 'screens/devices_screen.dart';
 import 'screens/screen_share_screen.dart';
@@ -16,6 +19,7 @@ import 'services/smart_home_service.dart';
 import 'services/vision_service.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const JarvisApp());
 }
 
@@ -44,12 +48,14 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   final WebSocketService _webSocketService = WebSocketService();
-  late DeviceService _deviceService;
-  late ScreenShareService _screenShareService;
-  late CameraService _cameraService;
-  late WearableService _wearableService;
-  late SmartHomeService _smartHomeService;
-  late VisionService _visionService;
+  late final DeviceService _deviceService;
+  late final ScreenShareService _screenShareService;
+  late final CameraService _cameraService;
+  late final WearableService _wearableService;
+  late final SmartHomeService _smartHomeService;
+  late final VisionService _visionService;
+  late final List<Widget> _screens;
+  StreamSubscription? _exitSub;
 
   @override
   void initState() {
@@ -63,20 +69,37 @@ class _MainScreenState extends State<MainScreen> {
     _wearableService = WearableService(_webSocketService);
     _smartHomeService = SmartHomeService(_webSocketService);
     _visionService = VisionService(_webSocketService);
-    _connectToServer();
-  }
 
-  void _connectToServer() {
+    _screens = [
+      HomeScreen(webSocketService: _webSocketService),
+      DevicesScreen(deviceService: _deviceService),
+      ScreenShareScreen(screenShareService: _screenShareService),
+      CameraScreen(cameraService: _cameraService, visionService: _visionService),
+      WearableScreen(wearableService: _wearableService),
+      SmartHomeScreen(smartHomeService: _smartHomeService),
+      PersonalityScreen(),
+      SettingsScreen(),
+    ];
+
     _webSocketService.connect('ws://localhost:8000/ws');
     _deviceService.fetchDevices();
     _cameraService.fetchCameras();
     _wearableService.fetchDevices();
     _smartHomeService.fetchDevices();
+
+    _exitSub = _webSocketService.exitApp.listen((_) {
+      exit(0);
+    });
   }
 
   @override
   void dispose() {
-    _webSocketService.dispose();
+    _exitSub?.cancel();
+    _webSocketService.send({'type': 'farewell'});
+    Future.delayed(Duration(seconds: 2), () {
+      _webSocketService.dispose();
+      exit(0);
+    });
     _deviceService.dispose();
     _screenShareService.dispose();
     _cameraService.dispose();
@@ -112,15 +135,4 @@ class _MainScreenState extends State<MainScreen> {
       ),
     );
   }
-
-  List<Widget> get _screens => [
-        HomeScreen(),
-        DevicesScreen(deviceService: _deviceService),
-        ScreenShareScreen(screenShareService: _screenShareService),
-        CameraScreen(cameraService: _cameraService, visionService: _visionService),
-        WearableScreen(wearableService: _wearableService),
-        SmartHomeScreen(smartHomeService: _smartHomeService),
-        PersonalityScreen(),
-        SettingsScreen(),
-      ];
 }

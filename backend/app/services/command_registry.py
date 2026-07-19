@@ -1,4 +1,5 @@
 import re
+import json
 from typing import Optional, Callable, Any
 from dataclasses import dataclass, field
 
@@ -267,6 +268,326 @@ class CommandRegistry:
             examples=["What's the cat doing?", "What is happening in the backyard?"],
         ))
 
+        self.register(CommandPattern(
+            patterns=[r"good\s*bye", r"bye", r"see you", r"see ya", r"exit", r"quit", r"close"],
+            handler="goodbye",
+            description="Say goodbye and close the app",
+            category="system",
+            examples=["Good bye", "Bye", "See you later", "Exit"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"open (.+) browser", r"launch (.+) browser", r"open browser (.+)"],
+            handler="open_app",
+            description="Open a browser by name",
+            category="desktop",
+            examples=["Open Brave browser", "Launch Chrome browser"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:open|show|go to) (?:the )?(?:my )?(desktop|documents|downloads|pictures|music|videos|onedrive)(?: folder)?", r"(?:open|show) folder (desktop|documents|downloads|pictures|music|videos|onedrive)"],
+            handler="open_file_explorer",
+            description="Open a common folder",
+            category="desktop",
+            examples=["Open my documents", "Open downloads folder", "Show my onedrive"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"open (.+)", r"launch (.+)", r"start (.+)"],
+            handler="open_app",
+            description="Open any application",
+            category="desktop",
+            examples=["Open Chrome", "Launch Spotify", "Start Notepad"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"open browser", r"open (?:google )?chrome", r"open (?:mozilla )?firefox", r"open edge", r"open firefox"],
+            handler="open_browser",
+            description="Open web browser",
+            category="desktop",
+            examples=["Open browser", "Open Chrome", "Open Firefox"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:go to|open|search) (?:youtube\.com|youtube) (.+)", r"youtube (.+)", r"watch (.+) on youtube"],
+            handler="open_youtube",
+            description="Search YouTube",
+            category="desktop",
+            examples=["YouTube lofi hip hop", "Watch cooking tutorials on YouTube"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"play (.+) on (?:youtube|yt)", r"play on youtube", r"play youtube (.+)"],
+            handler="play_youtube",
+            description="Play music on YouTube",
+            category="desktop",
+            examples=["Play jazz on YouTube", "Play YouTube music"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:open|show) (?:file )?(?:explorer|manager|files)", r"(?:open|go to) (?:my )?(desktop|documents|downloads|pictures|music|videos|home)", r"(?:open|show) folder (.+)"],
+            handler="open_file_explorer",
+            description="Open file explorer",
+            category="desktop",
+            examples=["Open file explorer", "Open my documents", "Open downloads folder"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:open|show) (?:a )?(?:terminal|cmd|command prompt|powershell)", r"(?:open|show) terminal at (.+)"],
+            handler="open_terminal",
+            description="Open terminal",
+            category="desktop",
+            examples=["Open terminal", "Open a command prompt"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"opencode (.+)", r"use opencode to (.+)", r"run opencode (.+)", r"ask opencode to (.+)"],
+            handler="open_opencode",
+            description="Run an opencode command",
+            category="desktop",
+            examples=["Opencode fix the bug in main.py", "Use opencode to add tests"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"close (.+)", r"kill (.+)"],
+            handler="close_app",
+            description="Close an application",
+            category="desktop",
+            examples=["Close Chrome", "Kill Notepad"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:take|capture) (?:a )?(?:screenshot|screen(?:shot)?|screen capture)"],
+            handler="screenshot",
+            description="Take a screenshot",
+            category="desktop",
+            examples=["Take a screenshot", "Capture screen"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:show|list|what(?:'s| is) running)(?: ?process(?:es)?)?", r"(?:show|list) task(?:s| ?manager)"],
+            handler="list_processes",
+            description="List running processes",
+            category="desktop",
+            examples=["Show processes", "What's running?", "List tasks"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:show|what(?:'s| is))(?: my)? (?:system|pc|computer) (?:info|specs|specifications)"],
+            handler="get_system_info",
+            description="Get system information",
+            category="desktop",
+            examples=["Show system info", "What are my PC specs?"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:show|what(?:'s| is))(?: my)? disk (?:usage|space|storage)"],
+            handler="get_disk_usage",
+            description="Check disk usage",
+            category="desktop",
+            examples=["Show disk usage", "What's my disk space?"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:set |change )?(?:volume|sound) to (\d+)", r"volume (\d+)", r"(?:set |change )?volume to (\d+)%"],
+            handler="set_volume",
+            description="Set system volume",
+            category="media",
+            examples=["Set volume to 50", "Volume 75", "Change volume to 30%"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:toggle |)mute(?:d)?", r"unmute", r"volume (?:up|down)"],
+            handler="mute",
+            description="Toggle mute",
+            category="media",
+            examples=["Mute", "Unmute", "Toggle mute"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:next|skip)(?: ?track| ?song)?", r"next song", r"skip this"],
+            handler="next_track",
+            description="Next track",
+            category="media",
+            examples=["Next track", "Skip song", "Next"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:previous|last|back)(?: ?track| ?song)?", r"previous song", r"go back"],
+            handler="previous_track",
+            description="Previous track",
+            category="media",
+            examples=["Previous track", "Last song", "Go back"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:play|pause|toggle play)(?:\/pause)?", r"(?:resume|unpause)"],
+            handler="play_pause",
+            description="Toggle play/pause",
+            category="media",
+            examples=["Play", "Pause", "Toggle play"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:shut down|shutdown|turn off)(?: the pc| the computer)?(?: in (\d+) (?:seconds?|minutes?))?"],
+            handler="shutdown",
+            description="Shut down the PC",
+            category="desktop",
+            examples=["Shut down", "Shutdown in 60 seconds", "Turn off the computer"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:restart|reboot)(?: the (?:pc|computer))?"],
+            handler="restart",
+            description="Restart the PC",
+            category="desktop",
+            examples=["Restart", "Reboot the PC"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"lock(?: the (?:pc|computer|screen))?"],
+            handler="lock_pc",
+            description="Lock the PC",
+            category="desktop",
+            examples=["Lock", "Lock the screen"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:sleep|suspend)(?: the (?:pc|computer))?"],
+            handler="sleep_pc",
+            description="Put PC to sleep",
+            category="desktop",
+            examples=["Sleep", "Put PC to sleep"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"run (?:the )?command (.+)", r"execute (.+)", r"shell (.+)"],
+            handler="run_command",
+            description="Run a shell command",
+            category="desktop",
+            examples=["Run command dir", "Execute ipconfig", "Shell whoami"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:search|find)(?: for)? (?:files? )?(?:named?|called?|matching) (.+)"],
+            handler="search_files",
+            description="Search for files",
+            category="desktop",
+            examples=["Search files named report", "Find documents matching budget"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"open (?:the )?(?:url|website|page) (.+)"],
+            handler="open_browser",
+            description="Open a URL in browser",
+            category="desktop",
+            examples=["Open the url github.com", "Open website stackoverflow.com"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:list|show|what(?:'s| is) (?:in|here))(?: the )?(?:current )?(?:folder|directory|dir)?", r"where am i", r"(?:what(?:'s| is))?(?: my )?current (?:folder|directory|location|path)"],
+            handler="list_dir",
+            description="List current directory",
+            category="navigation",
+            examples=["List folder", "What's in this directory?", "Where am I?"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:go|navigate|open) to (.+)", r"(?:go|navigate) into (.+)", r"(?:open|show) folder (.+)", r"(?:list|show) (.+) folder"],
+            handler="navigate_to",
+            description="Navigate into a folder",
+            category="navigation",
+            examples=["Go to Documents", "Navigate into Projects", "Open folder Downloads"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:go back|back|up|parent|previous folder)"],
+            handler="go_back",
+            description="Go to parent directory",
+            category="navigation",
+            examples=["Go back", "Back", "Up one level"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:go )?home", r"my files", r"(?:go to )?home folder"],
+            handler="go_home",
+            description="Go to home directory",
+            category="navigation",
+            examples=["Home", "Go home", "My files"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"read (?:the )?file (.+)", r"open file (.+)", r"show (?:the )?(?:content of )?(.+)"],
+            handler="read_file",
+            description="Read a text file",
+            category="navigation",
+            examples=["Read file notes.txt", "Open file main.py", "Show report.csv"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:where|what(?:'s| is)) (?:am i|current location|current directory)"],
+            handler="get_current_location",
+            description="Show current directory path",
+            category="navigation",
+            examples=["Where am I?", "What's my current location?"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:what|show)(?: ?)(?:folders?|directories?|files?)(?: ?)(?:are|is|do)(?: ?)(?:here|i have|on my pc|available)", r"(?:show|what)(?:'s| is)(?: ?)(?:in )?(?:my )?(?:pc|computer|system)", r"folder (?:map|list|structure)", r"(?:show|what) folders?"],
+            handler="get_folder_map",
+            description="Show all folders on the PC",
+            category="navigation",
+            examples=["What folders do I have?", "Show my folders", "Folder map"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"scan (.+)", r"deep scan (.+)", r"what(?:'s| is) (?:in|inside) (.+)(?: ?)(?:folder|directory)?", r"show (?:me )?(?:what(?:'s| is) )?in (.+)"],
+            handler="deep_scan",
+            description="Deep scan a specific folder to see all files and subfolders",
+            category="navigation",
+            examples=["Scan my projects folder", "What's in Documents?", "Show me what's in Downloads"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"remember (.+)", r"don't forget (.+)", r"keep in mind (.+)", r"make a note (.+)"],
+            handler="remember",
+            description="Remember something for future conversations",
+            category="memory",
+            examples=["Remember my WiFi password is 1234", "Don't forget I have a meeting at 3pm"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"what do you remember", r"what have you remembered", r"recall (.+)", r"what do you know about (.+)", r"do you remember (.+)"],
+            handler="recall",
+            description="Recall something from memory",
+            category="memory",
+            examples=["What do you remember?", "Do you remember my WiFi password?"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"forget (.+)", r"clear memory", r"reset memory"],
+            handler="forget",
+            description="Forget something from memory",
+            category="memory",
+            examples=["Forget my WiFi password", "Clear memory"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"what do you know(?: about)? (.+)", r"tell me about (.+)", r"what have you learned about (.+)"],
+            handler="knowledge_search",
+            description="Search what the AI knows about a topic",
+            category="memory",
+            examples=["What do you know about me?", "Tell me about my projects"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"what do you know", r"what have you learned", r"knowledge summary", r"show your knowledge"],
+            handler="knowledge_summary",
+            description="Show a summary of everything the AI has learned",
+            category="memory",
+            examples=["What do you know?", "Show your knowledge"],
+        ))
+
     def register(self, command: CommandPattern):
         for pattern in command.patterns:
             self.commands[pattern] = command
@@ -285,19 +606,39 @@ class CommandRegistry:
         return None
 
     def parse_command(self, text: str) -> dict:
-        result = self.match_command(text)
-        if not result:
-            return {"matched": False, "text": text}
+        text = text.strip()
+        cleaned = re.sub(
+            r"^(?:can you|could you|would you|please|hey|ok |alright |yeah |yep |yo |jarvis[,.]?\s*|computer[,.]?\s*|assistant[,.]?\s*)\s*",
+            "", text, flags=re.IGNORECASE
+        ).strip()
+        cleaned = re.sub(r"\s*(?:please|sir|madam|boss|thanks|thank you)\s*$", "", cleaned, flags=re.IGNORECASE).strip()
+        cleaned = re.sub(r"^(?:i (?:want to|would like to|need to|wanna|gonna))\s*", "", cleaned, flags=re.IGNORECASE).strip()
 
-        command, match_data = result
-        return {
-            "matched": True,
-            "handler": command.handler,
-            "category": command.category,
-            "description": command.description,
-            "params": match_data["groups"],
-            "text": match_data["text"],
-        }
+        for pattern, command in self.commands.items():
+            match = re.search(pattern, cleaned, re.IGNORECASE)
+            if match:
+                return {
+                    "matched": True,
+                    "handler": command.handler,
+                    "category": command.category,
+                    "description": command.description,
+                    "params": match.groups(),
+                    "text": cleaned,
+                }
+
+        for pattern, command in self.commands.items():
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return {
+                    "matched": True,
+                    "handler": command.handler,
+                    "category": command.category,
+                    "description": command.description,
+                    "params": match.groups(),
+                    "text": text,
+                }
+
+        return {"matched": False, "text": text}
 
     async def execute_command(self, text: str, context: dict = None) -> dict:
         parsed = self.parse_command(text)
@@ -367,6 +708,102 @@ class CommandRegistry:
 
     def get_categories(self) -> list[str]:
         return list(set(cmd.category for cmd in self.commands.values()))
+
+    async def llm_parse_command(self, text: str) -> Optional[dict]:
+        import ollama
+        from app.services.system_command_service import system_command_service
+
+        handlers = {}
+        seen = set()
+        for cmd in self.commands.values():
+            if cmd.handler not in seen:
+                seen.add(cmd.handler)
+                handlers[cmd.handler] = {
+                    "description": cmd.description,
+                    "category": cmd.category,
+                    "examples": cmd.examples,
+                }
+
+        try:
+            folder_info = await system_command_service.get_folder_map()
+            current_dir = folder_info.get("current_dir", "")
+            home = folder_info.get("home", "")
+            top_level = folder_info.get("top_level", [])
+            folder_context = f"User's home: {home}\nCurrent directory: {current_dir}\nTop-level folders: {', '.join(top_level)}"
+        except:
+            folder_context = ""
+
+        prompt = f"""You are a command parser. Given user input, determine which command to execute.
+
+Available commands:
+{json.dumps(handlers, indent=2)}
+
+User's PC folders:
+{folder_context}
+
+User said: "{text}"
+
+Return ONLY a JSON object:
+- "handler": handler name (must match one from the list exactly)
+- "params": extracted parameters as a list of strings
+
+RULES:
+- For "open_app": params should be just the app name, no filler words. E.g. "open brave browser" -> ["brave"], "launch spotify app" -> ["spotify"]
+- For "open_file_explorer": params should be the folder name that matches what the user has. E.g. "open my onedrive" -> ["onedrive"]
+- For "navigate_to": params should be an actual folder the user has from the folder list above
+- For "play_youtube"/"open_youtube": params should be the search query
+- Remove filler words like "please", "the", "my", "a", "app", "browser", "folder" from app names
+- If the user mentions a folder that exists on their PC, use navigate_to or open_file_explorer accordingly
+- If no command matches, return: {{"handler": null, "params": []}}
+
+Examples:
+- "open brave browser" -> {{"handler": "open_app", "params": ["brave"]}}
+- "launch spotify" -> {{"handler": "open_app", "params": ["spotify"]}}
+- "open my onedrive" -> {{"handler": "open_file_explorer", "params": ["onedrive"]}}
+- "go to my downloads folder" -> {{"handler": "navigate_to", "params": ["downloads"]}}
+- "show me what's in the documents folder" -> {{"handler": "navigate_to", "params": ["documents"]}}
+- "what's in this folder" -> {{"handler": "list_dir", "params": []}}
+- "play some jazz on youtube" -> {{"handler": "play_youtube", "params": ["jazz"]}}
+- "go back" -> {{"handler": "go_back", "params": []}}
+- "read the config file" -> {{"handler": "read_file", "params": ["config"]}}
+- "open the file explorer to my pictures" -> {{"handler": "open_file_explorer", "params": ["pictures"]}}
+- "where am i" -> {{"handler": "get_current_location", "params": []}}
+- "mute the pc" -> {{"handler": "mute", "params": []}}
+- "take a screenshot" -> {{"handler": "screenshot", "params": []}}
+- "shut down the computer" -> {{"handler": "shutdown", "params": []}}
+- "restart my pc" -> {{"handler": "restart", "params": []}}
+- "lock my screen" -> {{"handler": "lock_pc", "params": []}}
+- "what folders do i have" -> {{"handler": "get_folder_map", "params": []}}
+- "scan my projects folder" -> {{"handler": "deep_scan", "params": ["projects"]}}
+- "what's in documents" -> {{"handler": "deep_scan", "params": ["documents"]}}
+- "show me what's in downloads" -> {{"handler": "deep_scan", "params": ["downloads"]}}
+- "remember my wifi password is 1234" -> {{"handler": "remember", "params": ["my wifi password is 1234"]}}
+- "don't forget i have a meeting at 3pm" -> {{"handler": "remember", "params": ["i have a meeting at 3pm"]}}
+- "what do you remember" -> {{"handler": "recall", "params": [""]}}
+- "do you remember my wifi password" -> {{"handler": "recall", "params": ["wifi password"]}}
+- "recall what i told you about projects" -> {{"handler": "recall", "params": ["projects"]}}
+- "forget my wifi password" -> {{"handler": "forget", "params": ["wifi password"]}}
+- "clear memory" -> {{"handler": "forget", "params": ["clear memory"]}}
+- "what do you know about me" -> {{"handler": "knowledge_search", "params": ["me"]}}
+- "what have you learned" -> {{"handler": "knowledge_summary", "params": []}}
+- "tell me about my preferences" -> {{"handler": "knowledge_search", "params": ["preferences"]}}
+
+Return ONLY valid JSON, no explanation."""
+
+        try:
+            response = ollama.chat(
+                model="llama3.2",
+                messages=[{"role": "user", "content": prompt}],
+                options={"temperature": 0.0, "num_predict": 150},
+            )
+            content = response["message"]["content"].strip()
+            content = re.sub(r'```json\n?|\n?```', '', content).strip()
+            result = json.loads(content)
+            if result.get("handler"):
+                return result
+        except Exception as e:
+            print(f"[LLM PARSE ERROR] {e}")
+        return None
 
 
 command_registry = CommandRegistry()

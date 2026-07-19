@@ -9,13 +9,63 @@ from app.services.rtsp_service import rtsp_service
 from app.services.wearable_service import wearable_service
 from app.services.command_registry import command_registry
 from app.services.vision_service import vision_service
+from app.services.system_command_service import system_command_service
 
 router = APIRouter()
 
 connected_clients: list[WebSocket] = []
+
+
+def _register_system_handlers():
+    scs = system_command_service
+    command_registry.register_handler("open_app", scs.open_app)
+    command_registry.register_handler("open_browser", scs.open_browser)
+    command_registry.register_handler("open_youtube", scs.open_youtube)
+    command_registry.register_handler("play_youtube", scs.play_youtube)
+    command_registry.register_handler("open_file_explorer", scs.open_file_explorer)
+    command_registry.register_handler("open_terminal", scs.open_terminal)
+    command_registry.register_handler("open_opencode", scs.open_opencode)
+    command_registry.register_handler("close_app", scs.close_app)
+    command_registry.register_handler("screenshot", scs.screenshot)
+    command_registry.register_handler("list_processes", scs.list_processes)
+    command_registry.register_handler("get_system_info", scs.get_system_info)
+    command_registry.register_handler("get_disk_usage", scs.get_disk_usage)
+    command_registry.register_handler("set_volume", scs.set_volume)
+    command_registry.register_handler("mute", scs.mute)
+    command_registry.register_handler("next_track", scs.next_track)
+    command_registry.register_handler("previous_track", scs.previous_track)
+    command_registry.register_handler("play_pause", scs.play_pause)
+    command_registry.register_handler("shutdown", scs.shutdown)
+    command_registry.register_handler("restart", scs.restart)
+    command_registry.register_handler("lock_pc", scs.lock_pc)
+    command_registry.register_handler("sleep_pc", scs.sleep_pc)
+    command_registry.register_handler("run_command", scs.run_command)
+    command_registry.register_handler("search_files", scs.search_files)
+    command_registry.register_handler("list_dir", scs.list_dir)
+    command_registry.register_handler("navigate_to", scs.navigate_to)
+    command_registry.register_handler("go_back", scs.go_back)
+    command_registry.register_handler("go_home", scs.go_home)
+    command_registry.register_handler("open_file", scs.open_file)
+    command_registry.register_handler("read_file", scs.read_file)
+    command_registry.register_handler("get_current_location", scs.get_current_location)
+    command_registry.register_handler("get_folder_map", scs.get_folder_map)
+    command_registry.register_handler("deep_scan", scs.deep_scan)
+    command_registry.register_handler("remember", scs.remember)
+    command_registry.register_handler("recall", scs.recall)
+    command_registry.register_handler("forget", scs.forget)
+    command_registry.register_handler("get_time", scs.get_time)
+    command_registry.register_handler("get_date", scs.get_date)
+
+    from app.services.knowledge_service import knowledge_service
+    command_registry.register_handler("knowledge_summary", lambda: knowledge_service.get_stats())
+    command_registry.register_handler("knowledge_search", knowledge_service.search)
+
+
+_register_system_handlers()
 client_devices: dict[int, str] = {}
 client_viewer_sessions: dict[int, str] = {}
 client_camera_viewers: dict[int, str] = {}
+introduction_pending: set[int] = set()
 
 
 async def broadcast(message: dict, exclude: WebSocket = None):
@@ -47,6 +97,9 @@ async def websocket_endpoint(websocket: WebSocket):
             "type": "client_connected",
             "client_id": client_id,
         }, websocket)
+
+        # Send time-based greeting on connect
+        await send_greeting(websocket)
 
         while True:
             data = await websocket.receive_text()
@@ -104,10 +157,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 await handle_voice_profile_switch(websocket, message)
             elif msg_type == "personality_update":
                 await handle_personality_update(websocket, message)
+            elif msg_type == "farewell":
+                await handle_farewell(websocket)
+            elif msg_type == "greeting":
+                await send_greeting(websocket)
             else:
                 await broadcast(message, websocket)
 
     except WebSocketDisconnect:
+        introduction_pending.discard(client_id)
         connected_clients.remove(websocket)
         device_id = client_devices.pop(client_id, None)
 
@@ -126,6 +184,133 @@ async def websocket_endpoint(websocket: WebSocket):
             "client_id": client_id,
             "device_id": device_id,
         })
+
+
+async def send_greeting(websocket: WebSocket):
+    from app.services.voice_service import voice_service
+    from app.services.voice_profile_service import voice_profile_service
+    from app.services.personality_service import personality_service
+
+    try:
+        if not personality_service.introduced:
+            introduction_pending.add(id(websocket))
+            intro_text = (
+                f"Hello! I am JARVIS, your personal AI assistant. "
+                f"I am here to help you with anything you need. "
+                f"But first, what should I call you?"
+            )
+
+            profile = voice_profile_service.get_active_profile()
+            tts_audio = await voice_service.text_to_speech(
+                intro_text,
+                voice=profile.voice,
+                rate=profile.rate,
+                pitch=profile.pitch,
+            )
+
+            await websocket.send_json({
+                "type": "avatar_state",
+                "state": "speaking"
+            })
+
+            await websocket.send_json({
+                "type": "voice_response",
+                "response": intro_text,
+                "audio": base64.b64encode(tts_audio).decode(),
+                "model": "introduction",
+                "is_introduction": True,
+            })
+
+            await websocket.send_json({
+                "type": "avatar_state",
+                "state": "idle"
+            })
+            return
+
+        hour = datetime.now().hour
+
+        if 5 <= hour < 12:
+            period = "morning"
+        elif 12 <= hour < 17:
+            period = "afternoon"
+        else:
+            period = "evening"
+
+        greeting_text = f"Good {period}, {personality_service.preferred_name}. How may I assist you today?"
+
+        profile = voice_profile_service.get_active_profile()
+        tts_audio = await voice_service.text_to_speech(
+            greeting_text,
+            voice=profile.voice,
+            rate=profile.rate,
+            pitch=profile.pitch,
+        )
+
+        await websocket.send_json({
+            "type": "avatar_state",
+            "state": "speaking"
+        })
+
+        await websocket.send_json({
+            "type": "voice_response",
+            "response": greeting_text,
+            "audio": base64.b64encode(tts_audio).decode(),
+            "model": "greeting",
+            "is_greeting": True,
+        })
+
+        await websocket.send_json({
+            "type": "avatar_state",
+            "state": "idle"
+        })
+    except Exception as e:
+        print(f"[GREETING ERROR] {e}")
+
+
+async def handle_farewell(websocket: WebSocket):
+    from app.services.voice_service import voice_service
+    from app.services.voice_profile_service import voice_profile_service
+    from app.services.personality_service import personality_service
+
+    try:
+        hour = datetime.now().hour
+
+        if 5 <= hour < 12:
+            farewell_text = f"Good morning, {personality_service.preferred_name}. Have a productive day ahead."
+        elif 12 <= hour < 17:
+            farewell_text = f"Good afternoon, {personality_service.preferred_name}. I will be here when you need me."
+        elif 17 <= hour < 21:
+            farewell_text = f"Good evening, {personality_service.preferred_name}. Take care and I will see you later."
+        else:
+            farewell_text = f"Good night, {personality_service.preferred_name}. Sleep well and I will be ready when you return."
+
+        profile = voice_profile_service.get_active_profile()
+        tts_audio = await voice_service.text_to_speech(
+            farewell_text,
+            voice=profile.voice,
+            rate=profile.rate,
+            pitch=profile.pitch,
+        )
+
+        await websocket.send_json({
+            "type": "avatar_state",
+            "state": "speaking"
+        })
+
+        await websocket.send_json({
+            "type": "voice_response",
+            "response": farewell_text,
+            "audio": base64.b64encode(tts_audio).decode(),
+            "model": "farewell",
+            "is_farewell": True,
+        })
+
+        await websocket.send_json({
+            "type": "avatar_state",
+            "state": "idle"
+        })
+    except Exception as e:
+        print(f"[FAREWELL ERROR] {e}")
 
 
 async def handle_device_register(websocket: WebSocket, message: dict, client_id: int):
@@ -177,13 +362,42 @@ async def handle_device_status_update(websocket: WebSocket, message: dict):
 
 async def handle_voice_chunk(websocket: WebSocket, message: dict):
     from app.services.voice_profile_service import voice_profile_service
-
-    await websocket.send_json({
-        "type": "avatar_state",
-        "state": "listening"
-    })
+    from app.services.personality_service import personality_service
 
     try:
+        if id(websocket) in introduction_pending:
+            introduction_pending.discard(id(websocket))
+            audio_b64 = message.get("audio")
+            if not audio_b64:
+                return
+            audio_data = base64.b64decode(audio_b64)
+            stt_result = await voice_service.speech_to_text(audio_data)
+            name = stt_result["text"].strip().strip(".").strip()
+            name = " ".join(w.capitalize() for w in name.split() if w.isalpha())
+            if name:
+                personality_service.preferred_name = name
+                personality_service.introduced = True
+                personality_service._save()
+                response_text = f"Nice to meet you, {name}! I will remember that. How may I assist you today?"
+            else:
+                personality_service.preferred_name = "Boss"
+                personality_service.introduced = True
+                personality_service._save()
+                response_text = "No problem! I will call you Boss. How may I assist you today?"
+            profile = voice_profile_service.get_active_profile()
+            tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice, rate=profile.rate, pitch=profile.pitch)
+            await websocket.send_json({"type": "avatar_state", "state": "speaking"})
+            await websocket.send_json({
+                "type": "voice_response",
+                "transcription": stt_result["text"],
+                "response": response_text,
+                "audio": base64.b64encode(tts_audio).decode(),
+                "model": "introduction",
+                "is_introduction": True,
+            })
+            await websocket.send_json({"type": "avatar_state", "state": "idle"})
+            return
+
         audio_b64 = message.get("audio")
         if not audio_b64:
             return
@@ -200,7 +414,57 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
 
         command_result = command_registry.parse_command(transcription)
         if command_result["matched"]:
+            if command_result["handler"] == "goodbye":
+                farewell_text = f"Goodbye, {personality_service.preferred_name}. It was a pleasure assisting you."
+                profile = voice_profile_service.get_active_profile()
+                tts_audio = await voice_service.text_to_speech(
+                    farewell_text,
+                    voice=profile.voice,
+                    rate=profile.rate,
+                    pitch=profile.pitch,
+                )
+
+                await websocket.send_json({
+                    "type": "avatar_state",
+                    "state": "speaking"
+                })
+
+                await websocket.send_json({
+                    "type": "voice_response",
+                    "transcription": transcription,
+                    "response": farewell_text,
+                    "audio": base64.b64encode(tts_audio).decode(),
+                    "model": "farewell",
+                    "is_farewell": True,
+                    "exit_app": True,
+                })
+                return
+
             execution = await command_registry.execute_command(transcription)
+
+            result_data = execution.get("result", {})
+            result_message = result_data.get("message", "Command executed.")
+            extra_info = ""
+            for k, v in result_data.items():
+                if k not in ("status", "message") and v:
+                    if isinstance(v, list):
+                        extra_info += f"\n{k}: {', '.join(str(i) for i in v[:10])}"
+                    elif isinstance(v, str) and len(v) > 5:
+                        extra_info += f"\n{k}: {v}"
+                    elif isinstance(v, dict):
+                        extra_info += f"\n{k}: {json.dumps(v, indent=None)[:500]}"
+
+            profile = voice_profile_service.get_active_profile()
+            try:
+                llm_response = await voice_service.chat_completion(
+                    message=f"The user said: \"{transcription}\"\nCommand result: {result_message}{extra_info}\n\nRespond with a short natural sentence (1-2 lines) about what was done. Be helpful and conversational.",
+                    system_prompt=f"You are JARVIS. {personality_service.get_system_prompt()}\nKeep responses under 2 sentences.",
+                )
+                response_text = llm_response["response"]
+            except:
+                response_text = result_message if result_message and result_message != "Command executed." else "All done."
+
+            tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice)
 
             await websocket.send_json({
                 "type": "command_response",
@@ -208,10 +472,6 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                 "command": command_result,
                 "result": execution,
             })
-
-            response_text = execution.get("result", {}).get("message", "Command executed.")
-            profile = voice_profile_service.get_active_profile()
-            tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice)
 
             await websocket.send_json({
                 "type": "avatar_state",
@@ -233,6 +493,67 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                 "state": "idle"
             })
             return
+
+        llm_result = await command_registry.llm_parse_command(transcription)
+        if llm_result and llm_result.get("handler"):
+            handler = command_registry.handlers.get(llm_result["handler"])
+            if handler:
+                try:
+                    params = llm_result.get("params", [])
+                    execution_result = await handler(*params)
+
+                    result_message = execution_result.get("message", "Command executed.")
+                    extra_info = ""
+                    for k, v in execution_result.items():
+                        if k not in ("status", "message") and v:
+                            if isinstance(v, list):
+                                extra_info += f"\n{k}: {', '.join(str(i) for i in v[:10])}"
+                            elif isinstance(v, str) and len(v) > 5:
+                                extra_info += f"\n{k}: {v}"
+                            elif isinstance(v, dict):
+                                extra_info += f"\n{k}: {json.dumps(v, indent=None)[:500]}"
+
+                    profile = voice_profile_service.get_active_profile()
+                    try:
+                        llm_response = await voice_service.chat_completion(
+                            message=f"The user said: \"{transcription}\"\nCommand executed: {command_result.get('handler', 'unknown')}\nResult: {result_message}{extra_info}\n\nGenerate a brief natural response about what just happened. Never say 'Command executed' or 'Done'. Say something a human assistant would say, like 'I've opened Brave for you' or 'Here are your folders' or 'Muted your PC'. One sentence max.",
+                            system_prompt=f"You are JARVIS, a sophisticated AI assistant. {personality_service.get_system_prompt()}\nYou just executed a system command for the user. Respond naturally in 1 sentence. Never use robotic phrases like 'command executed' or 'task completed'.",
+                        )
+                        response_text = llm_response["response"]
+                    except:
+                        response_text = result_message if result_message and result_message != "Command executed." else "All done."
+
+                    tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice)
+
+                    await websocket.send_json({
+                        "type": "command_response",
+                        "transcription": transcription,
+                        "command": {"handler": llm_result["handler"], "params": params},
+                        "result": execution_result,
+                    })
+
+                    await websocket.send_json({
+                        "type": "avatar_state",
+                        "state": "speaking"
+                    })
+
+                    await websocket.send_json({
+                        "type": "voice_response",
+                        "transcription": transcription,
+                        "confidence": stt_result["confidence"],
+                        "response": response_text,
+                        "audio": base64.b64encode(tts_audio).decode(),
+                        "model": "llm_command",
+                        "is_command": True,
+                    })
+
+                    await websocket.send_json({
+                        "type": "avatar_state",
+                        "state": "idle"
+                    })
+                    return
+                except Exception as e:
+                    print(f"[LLM COMMAND ERROR] {e}")
 
         result = await voice_service.voice_pipeline(
             audio_data=audio_data,
@@ -259,18 +580,45 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
         })
 
     except Exception as e:
-        await websocket.send_json({
-            "type": "error",
-            "message": str(e)
-        })
-        await websocket.send_json({
-            "type": "avatar_state",
-            "state": "error"
-        })
+        print(f"[VOICE CHUNK ERROR] {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            from app.services.voice_profile_service import voice_profile_service as _vps
+            error_text = f"I encountered an error: {type(e).__name__}. {e}"
+            profile = _vps.get_active_profile()
+            tts_audio = await voice_service.text_to_speech(error_text, voice=profile.voice)
+
+            await websocket.send_json({
+                "type": "avatar_state",
+                "state": "speaking"
+            })
+
+            await websocket.send_json({
+                "type": "voice_response",
+                "response": error_text,
+                "audio": base64.b64encode(tts_audio).decode(),
+                "model": "error",
+            })
+
+            await websocket.send_json({
+                "type": "avatar_state",
+                "state": "idle"
+            })
+        except:
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Something went wrong: {type(e).__name__}: {e}"
+            })
+            await websocket.send_json({
+                "type": "avatar_state",
+                "state": "error"
+            })
 
 
 async def handle_text_message(websocket: WebSocket, message: dict):
     from app.services.personality_service import personality_service
+    from app.services.voice_profile_service import voice_profile_service
 
     await websocket.send_json({
         "type": "avatar_state",
@@ -278,11 +626,89 @@ async def handle_text_message(websocket: WebSocket, message: dict):
     })
 
     try:
+        if id(websocket) in introduction_pending:
+            introduction_pending.discard(id(websocket))
+            text = message.get("text", "").strip().strip(".").strip()
+            name = " ".join(w.capitalize() for w in text.split() if w.isalpha())
+            if name and len(name) < 30:
+                personality_service.preferred_name = name
+                personality_service.introduced = True
+                personality_service._save()
+                response_text = f"Nice to meet you, {name}! I will remember that. How may I assist you today?"
+            else:
+                personality_service.preferred_name = "Boss"
+                personality_service.introduced = True
+                personality_service._save()
+                response_text = "No problem! I will call you Boss. How may I assist you today?"
+            profile = voice_profile_service.get_active_profile()
+            tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice, rate=profile.rate, pitch=profile.pitch)
+            await websocket.send_json({"type": "avatar_state", "state": "speaking"})
+            await websocket.send_json({
+                "type": "voice_response",
+                "transcription": text,
+                "response": response_text,
+                "audio": base64.b64encode(tts_audio).decode(),
+                "model": "introduction",
+                "is_introduction": True,
+            })
+            await websocket.send_json({"type": "avatar_state", "state": "idle"})
+            return
+
         text = message.get("text", "")
 
         command_result = command_registry.parse_command(text)
         if command_result["matched"]:
+            if command_result["handler"] == "goodbye":
+                farewell_text = f"Goodbye, {personality_service.preferred_name}. It was a pleasure assisting you."
+                profile = voice_profile_service.get_active_profile()
+                tts_audio = await voice_service.text_to_speech(
+                    farewell_text,
+                    voice=profile.voice,
+                    rate=profile.rate,
+                    pitch=profile.pitch,
+                )
+
+                await websocket.send_json({
+                    "type": "avatar_state",
+                    "state": "speaking"
+                })
+
+                await websocket.send_json({
+                    "type": "voice_response",
+                    "transcription": text,
+                    "response": farewell_text,
+                    "audio": base64.b64encode(tts_audio).decode(),
+                    "model": "farewell",
+                    "is_farewell": True,
+                    "exit_app": True,
+                })
+                return
+
             execution = await command_registry.execute_command(text)
+
+            result_data = execution.get("result", {})
+            result_message = result_data.get("message", "Command executed.")
+            extra_info = ""
+            for k, v in result_data.items():
+                if k not in ("status", "message") and v:
+                    if isinstance(v, list):
+                        extra_info += f"\n{k}: {', '.join(str(i) for i in v[:10])}"
+                    elif isinstance(v, str) and len(v) > 5:
+                        extra_info += f"\n{k}: {v}"
+                    elif isinstance(v, dict):
+                        extra_info += f"\n{k}: {json.dumps(v, indent=None)[:500]}"
+
+            profile = voice_profile_service.get_active_profile()
+            try:
+                llm_response = await voice_service.chat_completion(
+                    message=f"The user said: \"{text}\"\nCommand result: {result_message}{extra_info}\n\nRespond with a short natural sentence (1-2 lines) about what was done. Be helpful and conversational.",
+                    system_prompt=f"You are JARVIS. {personality_service.get_system_prompt()}\nKeep responses under 2 sentences.",
+                )
+                response_text = llm_response["response"]
+            except:
+                response_text = result_message if result_message and result_message != "Command executed." else "All done."
+
+            tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice)
 
             await websocket.send_json({
                 "type": "command_response",
@@ -291,10 +717,16 @@ async def handle_text_message(websocket: WebSocket, message: dict):
                 "result": execution,
             })
 
-            response_text = execution.get("result", {}).get("message", "Command executed.")
             await websocket.send_json({
-                "type": "text_response",
+                "type": "avatar_state",
+                "state": "speaking"
+            })
+
+            await websocket.send_json({
+                "type": "voice_response",
+                "transcription": text,
                 "response": response_text,
+                "audio": base64.b64encode(tts_audio).decode(),
                 "model": "command_registry",
                 "is_command": True,
             })
@@ -305,16 +737,91 @@ async def handle_text_message(websocket: WebSocket, message: dict):
             })
             return
 
+        llm_result = await command_registry.llm_parse_command(text)
+        if llm_result and llm_result.get("handler"):
+            handler = command_registry.handlers.get(llm_result["handler"])
+            if handler:
+                try:
+                    params = llm_result.get("params", [])
+                    execution_result = await handler(*params)
+
+                    result_message = execution_result.get("message", "Command executed.")
+                    extra_info = ""
+                    for k, v in execution_result.items():
+                        if k not in ("status", "message") and v:
+                            if isinstance(v, list):
+                                extra_info += f"\n{k}: {', '.join(str(i) for i in v[:10])}"
+                            elif isinstance(v, str) and len(v) > 5:
+                                extra_info += f"\n{k}: {v}"
+                            elif isinstance(v, dict):
+                                extra_info += f"\n{k}: {json.dumps(v, indent=None)[:500]}"
+
+                    profile = voice_profile_service.get_active_profile()
+                    try:
+                        llm_response = await voice_service.chat_completion(
+                            message=f"The user said: \"{text}\"\nCommand executed: {llm_result.get('handler', 'unknown')}\nResult: {result_message}{extra_info}\n\nGenerate a brief natural response about what just happened. Never say 'Command executed' or 'Done'. Say something a human assistant would say, like 'I've opened Brave for you' or 'Here are your folders' or 'Muted your PC'. One sentence max.",
+                            system_prompt=f"You are JARVIS, a sophisticated AI assistant. {personality_service.get_system_prompt()}\nYou just executed a system command for the user. Respond naturally in 1 sentence. Never use robotic phrases like 'command executed' or 'task completed'.",
+                        )
+                        response_text = llm_response["response"]
+                    except:
+                        response_text = result_message if result_message and result_message != "Command executed." else "All done."
+
+                    tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice)
+
+                    await websocket.send_json({
+                        "type": "command_response",
+                        "text": text,
+                        "command": {"handler": llm_result["handler"], "params": params},
+                        "result": execution_result,
+                    })
+
+                    await websocket.send_json({
+                        "type": "avatar_state",
+                        "state": "speaking"
+                    })
+
+                    await websocket.send_json({
+                        "type": "voice_response",
+                        "transcription": text,
+                        "response": response_text,
+                        "audio": base64.b64encode(tts_audio).decode(),
+                        "model": "llm_command",
+                        "is_command": True,
+                    })
+
+                    await websocket.send_json({
+                        "type": "avatar_state",
+                        "state": "idle"
+                    })
+                    return
+                except Exception as e:
+                    print(f"[LLM COMMAND ERROR] {e}")
+
         result = await voice_service.chat_completion(
             message=text,
             system_prompt=personality_service.get_system_prompt(),
             conversation_history=message.get("conversation_history")
         )
 
+        profile = voice_profile_service.get_active_profile()
+        tts_audio = await voice_service.text_to_speech(
+            result["response"],
+            voice=profile.voice,
+            rate=profile.rate,
+            pitch=profile.pitch,
+        )
+
         await websocket.send_json({
-            "type": "text_response",
+            "type": "avatar_state",
+            "state": "speaking"
+        })
+
+        await websocket.send_json({
+            "type": "voice_response",
+            "transcription": text,
             "response": result["response"],
-            "model": result["model"]
+            "audio": base64.b64encode(tts_audio).decode(),
+            "model": result["model"],
         })
 
         await websocket.send_json({
@@ -323,14 +830,36 @@ async def handle_text_message(websocket: WebSocket, message: dict):
         })
 
     except Exception as e:
-        await websocket.send_json({
-            "type": "error",
-            "message": str(e)
-        })
-        await websocket.send_json({
-            "type": "avatar_state",
-            "state": "error"
-        })
+        try:
+            error_text = f"I encountered an error: {type(e).__name__}. {e}"
+            profile = voice_profile_service.get_active_profile()
+            tts_audio = await voice_service.text_to_speech(error_text, voice=profile.voice)
+
+            await websocket.send_json({
+                "type": "avatar_state",
+                "state": "speaking"
+            })
+
+            await websocket.send_json({
+                "type": "voice_response",
+                "response": error_text,
+                "audio": base64.b64encode(tts_audio).decode(),
+                "model": "error",
+            })
+
+            await websocket.send_json({
+                "type": "avatar_state",
+                "state": "idle"
+            })
+        except:
+            await websocket.send_json({
+                "type": "error",
+                "message": str(e)
+            })
+            await websocket.send_json({
+                "type": "avatar_state",
+                "state": "error"
+            })
 
 
 async def handle_screen_start(websocket: WebSocket, message: dict):

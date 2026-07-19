@@ -5,36 +5,45 @@ import '../services/websocket_service.dart';
 import '../services/voice_service.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final WebSocketService webSocketService;
+  const HomeScreen({super.key, required this.webSocketService});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final WebSocketService _webSocketService = WebSocketService();
   late VoiceService _voiceService;
 
   String _avatarState = 'idle';
   String _lastMessage = 'Ready to assist you.';
   String _transcription = '';
   bool _isConnected = false;
+  bool _wordPulse = false;
 
   StreamSubscription? _avatarSubscription;
   StreamSubscription? _transcriptionSubscription;
   StreamSubscription? _responseSubscription;
+  Timer? _wordPulseTimer;
+  int _wordIndex = 0;
+  List<String> _words = [];
 
   @override
   void initState() {
     super.initState();
-    _voiceService = VoiceService(_webSocketService);
+    _voiceService = VoiceService(widget.webSocketService);
     _setupListeners();
-    _connectToServer();
+    _setupConnectionWatch();
   }
 
   void _setupListeners() {
     _avatarSubscription = _voiceService.avatarState.listen((state) {
       setState(() => _avatarState = state);
+      if (state == 'speaking') {
+        _startWordPulse();
+      } else {
+        _stopWordPulse();
+      }
     });
 
     _transcriptionSubscription = _voiceService.transcription.listen((text) {
@@ -46,30 +55,65 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _responseSubscription = _voiceService.response.listen((response) {
       setState(() => _lastMessage = response);
+      _words = response.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+      _wordIndex = 0;
+      if (_avatarState == 'speaking') {
+        _startWordPulse();
+      }
     });
   }
 
-  void _connectToServer() {
-    _webSocketService.connect('ws://localhost:8000/ws');
-    _webSocketService.messages.listen((message) {
-      if (message['type'] == 'pong') {
-        setState(() => _isConnected = true);
+  void _startWordPulse() {
+    _stopWordPulse();
+    if (_words.isEmpty) return;
+
+    _wordPulseTimer = Timer.periodic(Duration(milliseconds: 150), (timer) {
+      if (!mounted || _avatarState != 'speaking') {
+        _stopWordPulse();
+        return;
+      }
+
+      if (_wordIndex < _words.length) {
+        setState(() {
+          _wordPulse = !_wordPulse;
+        });
+        _wordIndex++;
+      } else {
+        _stopWordPulse();
       }
     });
+  }
 
-    Timer.periodic(Duration(seconds: 30), (timer) {
-      if (_isConnected) {
-        _webSocketService.send({'type': 'ping'});
+  void _stopWordPulse() {
+    _wordPulseTimer?.cancel();
+    _wordPulseTimer = null;
+  }
+
+  void _setupConnectionWatch() {
+    setState(() => _isConnected = widget.webSocketService.isConnected);
+
+    widget.webSocketService.messages.listen((_) {
+      if (!_isConnected) setState(() => _isConnected = true);
+    });
+
+    Timer.periodic(Duration(seconds: 2), (timer) {
+      if (mounted) {
+        final connected = widget.webSocketService.isConnected;
+        if (connected != _isConnected) {
+          setState(() => _isConnected = connected);
+        }
+      } else {
+        timer.cancel();
       }
     });
   }
 
   @override
   void dispose() {
+    _stopWordPulse();
     _avatarSubscription?.cancel();
     _transcriptionSubscription?.cancel();
     _responseSubscription?.cancel();
-    _webSocketService.dispose();
     _voiceService.dispose();
     super.dispose();
   }
@@ -80,6 +124,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } else {
       await _voiceService.startListening();
     }
+    if (mounted) setState(() {});
   }
 
   @override
@@ -92,7 +137,10 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildStatusBar(),
             Expanded(
               child: Center(
-                child: AvatarWidget(currentState: _avatarState),
+                child: AvatarWidget(
+                  currentState: _avatarState,
+                  wordPulse: _wordPulse,
+                ),
               ),
             ),
             _buildBottomPanel(),
@@ -142,6 +190,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBottomPanel() {
+    String statusText;
+    switch (_avatarState) {
+      case 'listening':
+        statusText = 'Listening...';
+        break;
+      case 'thinking':
+        statusText = 'Processing...';
+        break;
+      case 'speaking':
+        statusText = 'Speaking...';
+        break;
+      case 'error':
+        statusText = 'Something went wrong. Try again.';
+        break;
+      default:
+        statusText = _lastMessage;
+    }
+
     return Container(
       padding: EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -150,23 +216,13 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Column(
         children: [
-          if (_transcription.isNotEmpty)
-            Container(
-              padding: EdgeInsets.all(12),
-              margin: EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.cyan.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                _transcription,
-                style: TextStyle(color: Colors.white70, fontSize: 14),
-                textAlign: TextAlign.center,
-              ),
-            ),
           Text(
-            _lastMessage,
-            style: TextStyle(color: Colors.white70, fontSize: 16),
+            statusText,
+            style: TextStyle(
+              color: _avatarState == 'speaking' ? Colors.cyan : Colors.white54,
+              fontSize: 16,
+              fontStyle: _avatarState == 'idle' ? FontStyle.normal : FontStyle.italic,
+            ),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: 20),
@@ -175,14 +231,12 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildActionButton(
                 Icons.mic,
-                'Voice',
+                'Speak',
                 _toggleVoice,
                 isActive: _voiceService.isRecording,
                 activeColor: Colors.green,
               ),
-              _buildActionButton(Icons.screen_share, 'Screen', () {}),
-              _buildActionButton(Icons.chat, 'Text', _showTextInput),
-              _buildActionButton(Icons.settings, 'Settings', () {}),
+              _buildActionButton(Icons.chat, 'Type', _showTextInput),
             ],
           ),
         ],
@@ -232,7 +286,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Color(0xFF1a1a2e),
-        title: Text('Send Message', style: TextStyle(color: Colors.cyan)),
+        title: Text('Speak to J.A.R.V.I.S.', style: TextStyle(color: Colors.cyan)),
         content: TextField(
           controller: controller,
           style: TextStyle(color: Colors.white),

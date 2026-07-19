@@ -1,0 +1,11 @@
+{
+  "home": true,
+  "max_depth": 2,
+  "scan_dirs": [],
+  "skip_dirs": [
+    ".git", ".cache", ".local", ".vscode", "AppData",
+    "node_modules", "__pycache__", ".android", ".gradle",
+    ".dartServer", ".pub-cache", "snap", ".npm", ".nvm"
+  ],
+  "cache_ttl_seconds": 300
+}

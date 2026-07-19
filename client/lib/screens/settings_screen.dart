@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../services/voice_profile_service.dart';
+import '../services/voice_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -8,17 +10,53 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  final VoiceProfileService _profileService = VoiceProfileService();
   bool _voiceEnabled = true;
   bool _autoConnect = true;
   bool _notificationsEnabled = true;
   bool _healthAlerts = true;
   bool _darkMode = true;
   String _wakeWord = 'Hey Jarvis';
-  String _ttsVoice = 'en-US-GuyNeural';
   String _llmModel = 'llama3.2';
   String _serverUrl = 'ws://localhost:8000/ws';
-  double _voiceSpeed = 1.0;
-  double _voicePitch = 1.0;
+  List _profiles = [];
+
+  List<String> _microphones = [];
+  List<String> _speakers = [];
+  String _selectedMic = '';
+  String _selectedSpeaker = '';
+  bool _loadingDevices = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfiles();
+    _loadAudioDevices();
+  }
+
+  Future<void> _loadProfiles() async {
+    final profiles = await _profileService.getProfiles();
+    setState(() => _profiles = profiles);
+  }
+
+  Future<void> _loadAudioDevices() async {
+    _selectedMic = VoiceService.selectedMic;
+    _selectedSpeaker = VoiceService.selectedSpeaker;
+
+    final mics = await VoiceService.listMicrophones();
+    final speakers = await VoiceService.listSpeakers();
+
+    if (mounted) {
+      setState(() {
+        _microphones = mics;
+        _speakers = speakers;
+        _loadingDevices = false;
+        if (_selectedMic.isEmpty && mics.isNotEmpty) {
+          _selectedMic = mics.first;
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +70,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: EdgeInsets.all(16),
         children: [
+          _buildSection('Audio Devices', [
+            _buildDeviceTile(
+              Icons.mic,
+              'Microphone',
+              _selectedMic.isEmpty ? 'Not selected' : _selectedMic,
+              _microphones,
+              _selectedMic,
+              (value) async {
+                setState(() => _selectedMic = value);
+                await VoiceService.saveDeviceSettings(_selectedMic, _selectedSpeaker);
+              },
+            ),
+            _buildDeviceTile(
+              Icons.speaker,
+              'Audio Output',
+              _selectedSpeaker.isEmpty ? 'Default' : _selectedSpeaker,
+              _speakers,
+              _selectedSpeaker,
+              (value) async {
+                setState(() => _selectedSpeaker = value);
+                await VoiceService.saveDeviceSettings(_selectedMic, _selectedSpeaker);
+              },
+            ),
+          ]),
+          SizedBox(height: 16),
           _buildSection('General', [
             _buildSwitchTile(Icons.dark_mode, 'Dark Mode', 'Use dark theme', _darkMode, (v) {
               setState(() => _darkMode = v);
@@ -57,13 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildTapTile(Icons.record_voice_over, 'Wake Word', _wakeWord, () => _showEditDialog('Wake Word', _wakeWord, (v) {
               setState(() => _wakeWord = v);
             })),
-            _buildTapTile(Icons.record_voice_over, 'TTS Voice', _ttsVoice, () => _showVoicePicker()),
-            _buildSliderTile(Icons.speed, 'Voice Speed', _voiceSpeed, 0.5, 2.0, (v) {
-              setState(() => _voiceSpeed = v);
-            }),
-            _buildSliderTile(Icons.graphic_eq, 'Voice Pitch', _voicePitch, 0.5, 2.0, (v) {
-              setState(() => _voicePitch = v);
-            }),
+            _buildTapTile(Icons.record_voice_over, 'TTS Voice', _profiles.isNotEmpty ? '${_profiles.firstWhere((p) => p['is_active'] == true, orElse: () => _profiles.isNotEmpty ? _profiles[0] : {'name': 'None'})['name']}' : 'Loading...', () => _showVoicePicker()),
           ]),
           SizedBox(height: 16),
           _buildSection('AI', [
@@ -83,7 +140,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           SizedBox(height: 16),
           _buildSection('About', [
-            _buildTapTile(Icons.info, 'Version', '0.2.0 (Phase 5)', () {}),
+            _buildTapTile(Icons.info, 'Version', '1.0.0 (MVP)', () {}),
             _buildTapTile(Icons.code, 'Open Source Licenses', '', () {}),
           ]),
           SizedBox(height: 32),
@@ -110,15 +167,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildSwitchTile(IconData icon, String title, String subtitle, bool value, ValueChanged<bool> onChanged) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.white70),
+    return SwitchListTile(
+      secondary: Icon(icon, color: Colors.white70),
       title: Text(title, style: TextStyle(color: Colors.white)),
       subtitle: Text(subtitle, style: TextStyle(color: Colors.white38, fontSize: 12)),
-      trailing: Switch(
-        value: value,
-        onChanged: onChanged,
-        activeColor: Colors.cyan,
-      ),
+      value: value,
+      onChanged: onChanged,
+      activeColor: Colors.cyan,
     );
   }
 
@@ -130,7 +185,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (trailing.isNotEmpty)
-            Text(trailing, style: TextStyle(color: Colors.white38, fontSize: 12)),
+            Flexible(
+              child: Text(trailing, style: TextStyle(color: Colors.white38, fontSize: 12), overflow: TextOverflow.ellipsis),
+            ),
           SizedBox(width: 4),
           Icon(Icons.chevron_right, color: Colors.white38, size: 20),
         ],
@@ -139,18 +196,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildSliderTile(IconData icon, String title, double value, double min, double max, ValueChanged<double> onChanged) {
+  Widget _buildDeviceTile(
+    IconData icon,
+    String title,
+    String currentDevice,
+    List<String> devices,
+    String selected,
+    ValueChanged<String> onSelected,
+  ) {
     return ListTile(
       leading: Icon(icon, color: Colors.white70),
       title: Text(title, style: TextStyle(color: Colors.white)),
-      subtitle: Slider(
-        value: value,
-        min: min,
-        max: max,
-        onChanged: onChanged,
-        activeColor: Colors.cyan,
+      subtitle: Text(
+        _loadingDevices ? 'Scanning...' : currentDevice,
+        style: TextStyle(color: Colors.white38, fontSize: 12),
       ),
-      trailing: Text(value.toStringAsFixed(1), style: TextStyle(color: Colors.white54)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_loadingDevices)
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyan),
+            )
+          else ...[
+            Icon(Icons.chevron_right, color: Colors.white38, size: 20),
+          ],
+        ],
+      ),
+      onTap: _loadingDevices ? null : () => _showDevicePicker(title, devices, selected, onSelected),
+    );
+  }
+
+  void _showDevicePicker(String title, List<String> devices, String current, ValueChanged<String> onSelected) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Color(0xFF1a1a2e),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Container(
+        padding: EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Select $title', style: TextStyle(color: Colors.cyan, fontSize: 18, fontWeight: FontWeight.bold)),
+            SizedBox(height: 16),
+            if (devices.isEmpty)
+              Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('No devices found', style: TextStyle(color: Colors.white38)),
+              )
+            else
+              ...devices.map((device) => ListTile(
+                title: Text(device, style: TextStyle(color: Colors.white)),
+                trailing: device == current ? Icon(Icons.check, color: Colors.cyan) : null,
+                onTap: () {
+                  onSelected(device);
+                  Navigator.pop(context);
+                },
+              )),
+            SizedBox(height: 8),
+            ListTile(
+              title: Text('Refresh', style: TextStyle(color: Colors.cyan)),
+              leading: Icon(Icons.refresh, color: Colors.cyan),
+              onTap: () {
+                Navigator.pop(context);
+                _loadAudioDevices();
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -161,7 +278,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: Color(0xFF1a1a2e),
         title: Text(title, style: TextStyle(color: Colors.cyan)),
-        content: TextField(
+          content: TextField(
           controller: controller,
           style: TextStyle(color: Colors.white),
           decoration: InputDecoration(
@@ -178,13 +295,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showVoicePicker() {
-    final voices = [
-      'en-US-GuyNeural',
-      'en-US-JennyNeural',
-      'en-US-AriaNeural',
-      'en-GB-SoniaNeural',
-      'en-AU-NatashaNeural',
-    ];
+    if (_profiles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No voice profiles loaded'), backgroundColor: Colors.red),
+      );
+      return;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -198,14 +314,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Text('Select Voice', style: TextStyle(color: Colors.cyan, fontSize: 18, fontWeight: FontWeight.bold)),
             SizedBox(height: 16),
-            ...voices.map((voice) => ListTile(
-              title: Text(voice, style: TextStyle(color: Colors.white)),
-              trailing: _ttsVoice == voice ? Icon(Icons.check, color: Colors.cyan) : null,
-              onTap: () {
-                setState(() => _ttsVoice = voice);
-                Navigator.pop(context);
-              },
-            )),
+            ..._profiles.map((profile) {
+              final isActive = profile['is_active'] == true;
+              return ListTile(
+                title: Text(profile['name'] ?? profile['id'], style: TextStyle(color: Colors.white)),
+                subtitle: Text(profile['voice'] ?? '', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                trailing: isActive ? Icon(Icons.check, color: Colors.cyan) : null,
+                onTap: () async {
+                  final result = await _profileService.switchProfile(profile['id']);
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Voice changed to ${profile['name']}'),
+                        backgroundColor: Colors.cyan,
+                      ),
+                    );
+                    _loadProfiles();
+                  }
+                },
+              );
+            }),
           ],
         ),
       ),

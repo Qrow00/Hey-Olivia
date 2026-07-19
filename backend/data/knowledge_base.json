@@ -1,0 +1,29 @@
+{
+  "entries": [],
+  "facts": {
+    "favorite color": {
+      "value": "blue",
+      "updated": "2026-07-20T02:06:52.359748",
+      "source": "conversation"
+    },
+    "wifi password": {
+      "value": "secret123",
+      "updated": "2026-07-20T02:06:52.361847",
+      "source": "conversation"
+    }
+  },
+  "preferences": {
+    "coding at night": {
+      "value": "i like coding at night",
+      "updated": "2026-07-20T02:06:52.361003",
+      "source": "conversation"
+    },
+    "waking up early": {
+      "value": "i hate waking up early",
+      "updated": "2026-07-20T02:06:52.362997",
+      "source": "conversation"
+    }
+  },
+  "patterns": [],
+  "corrections": []
+}

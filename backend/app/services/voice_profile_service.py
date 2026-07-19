@@ -43,10 +43,10 @@ class VoiceProfileService:
             VoiceProfile(
                 id="jarvis",
                 name="J.A.R.V.I.S.",
-                voice="en-US-GuyNeural",
-                rate=0,
+                voice="en-GB-RyanNeural",
+                rate=-5,
                 pitch=0,
-                description="British butler, calm and precise",
+                description="British, calm and precise (Paul Bettany)",
                 is_default=True,
             ),
             VoiceProfile(
@@ -60,10 +60,10 @@ class VoiceProfileService:
             VoiceProfile(
                 id="edith",
                 name="Edith",
-                voice="en-US-AriaNeural",
-                rate=-5,
-                pitch=-1,
-                description="Warm and measured",
+                voice="en-GB-SoniaNeural",
+                rate=-3,
+                pitch=0,
+                description="Authoritative, measured (MCU Edith)",
             ),
             VoiceProfile(
                 id="tobby",

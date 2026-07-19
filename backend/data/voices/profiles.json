@@ -4,12 +4,12 @@
     {
       "id": "jarvis",
       "name": "J.A.R.V.I.S.",
-      "voice": "en-US-GuyNeural",
-      "rate": 0,
+      "voice": "en-GB-RyanNeural",
+      "rate": -5,
       "pitch": 0,
       "volume": 1.0,
-      "description": "British butler, calm and precise",
-      "language": "en-US",
+      "description": "British, calm and precise (Paul Bettany)",
+      "language": "en-GB",
       "is_default": true
     },
     {
@@ -26,12 +26,12 @@
     {
       "id": "edith",
       "name": "Edith",
-      "voice": "en-US-AriaNeural",
-      "rate": -5,
-      "pitch": -1,
+      "voice": "en-GB-SoniaNeural",
+      "rate": -3,
+      "pitch": 0,
       "volume": 1.0,
-      "description": "Warm and measured",
-      "language": "en-US",
+      "description": "Authoritative, measured (MCU Edith)",
+      "language": "en-GB",
       "is_default": false
     },
     {
