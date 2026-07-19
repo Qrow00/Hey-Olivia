@@ -15,3 +15,13 @@ edge-tts>=6.1.9
 ollama>=0.4.0
 numpy>=1.26.0
 soundfile>=0.12.0
+
+# Camera / RTSP
+opencv-python>=4.9.0
+
+# Smart Home
+paho-mqtt>=1.6.1
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

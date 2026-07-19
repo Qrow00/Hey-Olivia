@@ -56,7 +56,7 @@ class Device {
   }
 
   bool get isOnline => status == 'online';
-  bool get hasCapability => (String cap) => capabilities.contains(cap);
+  bool hasCapability(String cap) => capabilities.contains(cap);
 
   String get lastSeenFormatted {
     final diff = DateTime.now().difference(lastSeen);

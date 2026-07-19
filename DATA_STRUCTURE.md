@@ -373,6 +373,147 @@ const API = {
 |                    +--> ADB (Phone)                   |
 |                    +--> SSH (PC)                      |
 |                    +--> RTSP (CCTV)                   |
+|                    +--> MQTT (Smart Home)             |
+|                    +--> Wearable (Health)             |
 |                                                      |
 +-----------------------------------------------------+
+```
+
+---
+
+## 11. Smart Home Device
+
+```javascript
+const SmartDevice = {
+  id: "string",
+  name: "string",
+  type: "light" | "switch" | "thermostat" | "lock" | "fan" | "curtain" | "sensor" | "plug" | "speaker" | "camera",
+  protocol: "mqtt" | "http" | "hue" | "tasmota" | "shelly",
+  ip: "string",
+  topic: "string (MQTT topic)",
+  room: "string",
+  is_online: "boolean",
+  is_on: "boolean",
+  brightness: "number (0-100)",
+  color: "string (#hex)",
+  temperature: "number",
+  humidity: "number",
+  battery: "number (0-100)",
+  state: "object",
+  capabilities: ["string"],
+  last_update: "number (timestamp)"
+};
+```
+
+---
+
+## 12. Wearable Device
+
+```javascript
+const WearableDevice = {
+  id: "string",
+  name: "string",
+  type: "smartwatch" | "fitness_band" | "smart_ring" | "medical_device",
+  platform: "android" | "ios" | "wearos",
+  is_online: "boolean",
+  battery: "number (0-100)",
+  firmware_version: "string",
+  last_sync: "number (timestamp)",
+  health_summary: {
+    heart_rate: {
+      current: "number (bpm)",
+      unit: "bpm",
+      avg: "number",
+      min: "number",
+      max: "number"
+    },
+    spo2: {
+      current: "number (0-100)",
+      unit: "%",
+      avg: "number"
+    },
+    steps: {
+      current: "number",
+      today_total: "number",
+      unit: "steps"
+    },
+    sleep: {
+      current: "number (hours)",
+      unit: "hrs"
+    },
+    calories: {
+      today_total: "number",
+      unit: "kcal"
+    },
+    stress: {
+      current: "number (0-100)",
+      unit: "level"
+    },
+    body_temperature: {
+      current: "number",
+      unit: "°F" | "°C"
+    }
+  }
+};
+```
+
+---
+
+## 13. Camera (RTSP)
+
+```javascript
+const CameraDevice = {
+  id: "string",
+  name: "string",
+  url: "string (RTSP URL)",
+  username: "string",
+  password: "string",
+  type: "cctv" | "doorbell" | "indoor" | "outdoor",
+  location: "string",
+  is_online: "boolean",
+  is_streaming: "boolean",
+  viewer_count: "number",
+  fps: "number",
+  quality: "number (JPEG quality)"
+};
+```
+
+---
+
+## 14. Command Registry
+
+```javascript
+const CommandPattern = {
+  patterns: ["string (regex)"],
+  handler: "string",
+  description: "string",
+  category: "system" | "smart_home" | "camera" | "health" | "screen" | "media" | "info",
+  examples: ["string"]
+};
+
+// Example command categories:
+const CommandCategories = {
+  system: ["what time", "what date", "remind me"],
+  smart_home: ["turn on", "turn off", "set brightness", "lock door"],
+  camera: ["show cameras", "show camera", "take photo"],
+  health: ["heart rate", "blood oxygen", "steps", "sleep"],
+  screen: ["share screen", "stop screen"],
+  media: ["play music", "stop music"],
+  info: ["weather", "search"]
+};
+```
+
+---
+
+## 15. Notification
+
+```javascript
+const Notification = {
+  id: "string",
+  title: "string",
+  message: "string",
+  type: "info" | "health" | "device" | "security" | "success" | "error",
+  timestamp: "Date",
+  is_read: "boolean"
+};
 ```

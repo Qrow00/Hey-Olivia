@@ -1,20 +1,42 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.database import get_db
-from app.models.models import Command
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+from app.services.command_registry import command_registry
 
 router = APIRouter()
 
 
+class CommandParse(BaseModel):
+    text: str
+
+
+class CommandExecute(BaseModel):
+    text: str
+    system_prompt: Optional[str] = None
+
+
 @router.get("/")
-async def get_commands(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(Command.__table__.select())
-    return result.fetchall()
+async def get_commands():
+    return command_registry.get_all_commands()
 
 
-@router.post("/")
-async def register_command(command: dict, db: AsyncSession = Depends(get_db)):
-    new_command = Command(**command)
-    db.add(new_command)
-    await db.commit()
-    return {"status": "registered", "command_id": new_command.id}
+@router.get("/categories")
+async def get_categories():
+    return command_registry.get_categories()
+
+
+@router.get("/category/{category}")
+async def get_commands_by_category(category: str):
+    return command_registry.get_commands_by_category(category)
+
+
+@router.post("/parse")
+async def parse_command(command: CommandParse):
+    result = command_registry.parse_command(command.text)
+    return result
+
+
+@router.post("/execute")
+async def execute_command(command: CommandExecute):
+    result = await command_registry.execute_command(command.text)
+    return result

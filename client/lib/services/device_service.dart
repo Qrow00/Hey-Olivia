@@ -52,7 +52,7 @@ class DeviceService {
         signal: message['signal'] ?? device.signal,
       );
       _deviceUpdateController.add(_devices[index]);
-    } else if (type == 'device_connected') {
+    } else if (message['type'] == 'device_connected') {
       final newDevice = Device(
         id: deviceId,
         name: message['name'] ?? 'Unknown Device',

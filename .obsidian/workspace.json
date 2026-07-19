@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "588c23d6d8d1703d",
+        "id": "e213be07b8393e04",
         "type": "tabs",
         "children": [
           {
-            "id": "d29fe59558239123",
+            "id": "6c813be104768a86",
             "type": "leaf",
             "state": {
               "type": "graph",
@@ -37,7 +37,7 @@
               "type": "file-explorer",
               "state": {
                 "sortOrder": "alphabetical",
-                "autoReveal": false
+                "autoReveal": true
               },
               "icon": "lucide-folder-closed",
               "title": "Files"
@@ -176,19 +176,25 @@
       "bases:Create new base": false
     }
   },
-  "active": "d29fe59558239123",
+  "active": "6c813be104768a86",
   "lastOpenFiles": [
+    "backend/jarvis.db-journal",
+    "backend/jarvis.db",
+    "backend/tests/__pycache__/test_plugins.cpython-314-pytest-9.1.1.pyc",
+    "backend/tests/__pycache__/test_commands.cpython-314-pytest-9.1.1.pyc",
+    "backend/tests/__pycache__/test_api.cpython-314-pytest-9.1.1.pyc",
+    "backend/tests/__pycache__/conftest.cpython-314-pytest-9.1.1.pyc",
+    "backend/tests/__pycache__/__init__.cpython-314.pyc",
+    "backend/tests/__pycache__",
+    "backend/app/plugins/__pycache__/__init__.cpython-314.pyc",
+    "backend/app/plugins/__pycache__/motion_detector.cpython-314.pyc",
+    "backend/app/plugins/__pycache__/manager.cpython-314.pyc",
+    "backend/SETUP.md",
+    "backend/API_DOCS.md",
     "vault/ROADMAP.md",
-    "run-client.ps1",
-    "run-backend.ps1",
-    "client/lib/screens/settings_screen.dart",
-    "client/lib/screens/devices_screen.dart",
-    "client/lib/screens/home_screen.dart",
-    "client/lib/widgets/device_card.dart",
-    "client/lib/widgets/avatar_widget.dart",
-    "client/lib/services/api_service.dart",
-    "client/lib/services/websocket_service.dart",
-    "client/lib/models/conversation.dart",
+    "DATA_STRUCTURE.md",
+    "node_modules/typescript/README.md",
+    "client/ios/Runner/Assets.xcassets/LaunchImage.imageset/README.md",
     "client/web/icons/Icon-512.png",
     "client/web/icons/Icon-maskable-192.png",
     "client/web/icons/Icon-maskable-512.png",
@@ -200,11 +206,8 @@
     "client/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_32.png",
     "client/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_128.png",
     "client/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_16.png",
-    "client/ios/Runner/Assets.xcassets/LaunchImage.imageset/README.md",
     "2026-07-18.md",
     "Untitled.canvas",
-    "node_modules/typescript/README.md",
-    "node_modules/typescript/SECURITY.md",
-    "DATA_STRUCTURE.md"
+    "node_modules/typescript/SECURITY.md"
   ]
 }

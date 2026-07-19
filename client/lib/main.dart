@@ -3,9 +3,16 @@ import 'screens/home_screen.dart';
 import 'screens/devices_screen.dart';
 import 'screens/screen_share_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/camera_screen.dart';
+import 'screens/wearable_screen.dart';
+import 'screens/smart_home_screen.dart';
 import 'services/websocket_service.dart';
 import 'services/device_service.dart';
 import 'services/screen_share_service.dart';
+import 'services/camera_service.dart';
+import 'services/wearable_service.dart';
+import 'services/smart_home_service.dart';
+import 'services/vision_service.dart';
 
 void main() {
   runApp(const JarvisApp());
@@ -38,6 +45,10 @@ class _MainScreenState extends State<MainScreen> {
   final WebSocketService _webSocketService = WebSocketService();
   late DeviceService _deviceService;
   late ScreenShareService _screenShareService;
+  late CameraService _cameraService;
+  late WearableService _wearableService;
+  late SmartHomeService _smartHomeService;
+  late VisionService _visionService;
 
   @override
   void initState() {
@@ -47,12 +58,19 @@ class _MainScreenState extends State<MainScreen> {
       baseUrl: 'http://localhost:8000',
     );
     _screenShareService = ScreenShareService(_webSocketService);
+    _cameraService = CameraService(_webSocketService);
+    _wearableService = WearableService(_webSocketService);
+    _smartHomeService = SmartHomeService(_webSocketService);
+    _visionService = VisionService(_webSocketService);
     _connectToServer();
   }
 
   void _connectToServer() {
     _webSocketService.connect('ws://localhost:8000/ws');
     _deviceService.fetchDevices();
+    _cameraService.fetchCameras();
+    _wearableService.fetchDevices();
+    _smartHomeService.fetchDevices();
   }
 
   @override
@@ -60,6 +78,10 @@ class _MainScreenState extends State<MainScreen> {
     _webSocketService.dispose();
     _deviceService.dispose();
     _screenShareService.dispose();
+    _cameraService.dispose();
+    _wearableService.dispose();
+    _smartHomeService.dispose();
+    _visionService.dispose();
     super.dispose();
   }
 
@@ -73,12 +95,17 @@ class _MainScreenState extends State<MainScreen> {
         backgroundColor: Color(0xFF1a1a2e),
         selectedItemColor: Colors.cyan,
         unselectedItemColor: Colors.white54,
+        type: BottomNavigationBarType.fixed,
+        selectedFontSize: 10,
+        unselectedFontSize: 10,
         items: [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.devices), label: 'Devices'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.screen_share), label: 'Screen'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+          BottomNavigationBarItem(icon: Icon(Icons.home, size: 20), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.devices, size: 20), label: 'Devices'),
+          BottomNavigationBarItem(icon: Icon(Icons.screen_share, size: 20), label: 'Screen'),
+          BottomNavigationBarItem(icon: Icon(Icons.visibility, size: 20), label: 'Vision'),
+          BottomNavigationBarItem(icon: Icon(Icons.watch, size: 20), label: 'Health'),
+          BottomNavigationBarItem(icon: Icon(Icons.home_outlined, size: 20), label: 'Smart'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings, size: 20), label: 'Settings'),
         ],
       ),
     );
@@ -88,6 +115,9 @@ class _MainScreenState extends State<MainScreen> {
         HomeScreen(),
         DevicesScreen(deviceService: _deviceService),
         ScreenShareScreen(screenShareService: _screenShareService),
+        CameraScreen(cameraService: _cameraService, visionService: _visionService),
+        WearableScreen(wearableService: _wearableService),
+        SmartHomeScreen(smartHomeService: _smartHomeService),
         SettingsScreen(),
       ];
 }

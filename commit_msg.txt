@@ -1,0 +1,19 @@
+Phase 2-4: Core Voice, Device Management, Screen Sharing
+
+Phase 2 - Core Voice:
+- Whisper STT, Edge-TTS, Ollama LLM integration
+- Voice service with full STT/TTS/LLM pipeline
+- WebSocket real-time voice streaming with avatar state sync
+- Flutter voice recording, 5-state animated avatar
+
+Phase 3 - Device Management:
+- Full CRUD device API with status, battery, signal tracking
+- Heartbeat mechanism for device keepalive
+- Auto-detect capabilities by platform
+- Multi-device dashboard with filters and real-time updates
+
+Phase 4 - Screen Sharing:
+- Screen share session management and WebSocket frame streaming
+- Remote viewer UI with fullscreen and analysis
+- Android native MediaProjection screen capture
+- LLM-powered screen analysis endpoint

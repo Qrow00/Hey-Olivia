@@ -41,21 +41,22 @@
 | ~~Basic analysis~~ | ~~LLM-powered screen analysis endpoint~~ |
 | ~~Remote view~~ | ~~Full viewer UI with fullscreen, viewer count, live indicator~~ |
 
-## Phase 5: Smart Home & Polish (Week 9-10)
+## Phase 5: Smart Home & Polish (Week 9-10) ✅ DONE
 | Task | Details |
 |------|---------|
-| RTSP integration | CCTV camera feeds |
-| Light control | MQTT/HTTP device control |
-| Command registry | Voice commands for home devices |
-| UI polish | Settings, error handling, notifications |
+| ~~RTSP integration~~ | ~~CCTV camera feeds with live streaming~~ |
+| ~~Wearable support~~ | ~~Heart rate, SpO2, sleep, steps, calories, stress, temperature~~ |
+| ~~Smart home control~~ | ~~MQTT/HTTP/Tasmota/Shelly device control with scenes~~ |
+| ~~Command registry~~ | ~~Voice command parsing with regex patterns~~ |
+| ~~UI polish~~ | ~~Settings, notifications, error handling~~ |
 
-## Phase 6: Future Proofing (Week 11-12)
+## Phase 6: Future Proofing (Week 11-12) ✅ DONE
 | Task | Details |
 |------|---------|
-| Plugin system | Device capability plugins |
-| API versioning | v1 endpoint structure |
-| Documentation | Setup guide, API docs |
-| Testing | Unit + integration tests |
+| ~~Plugin system~~ | ~~Abstract DevicePlugin base, PluginManager, motion detector plugin~~ |
+| ~~API versioning~~ | ~~All endpoints under /api/v1/ prefix~~ |
+| ~~Documentation~~ | ~~SETUP.md, API_DOCS.md~~ |
+| ~~Testing~~ | ~~17 tests passing (API, commands, plugins)~~ |
 
 ---
 

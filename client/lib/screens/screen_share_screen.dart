@@ -249,7 +249,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
             onTap: _toggleStreaming,
           ),
           _buildControlButton(
-            icon: Icons.analyze,
+            icon: Icons.analytics,
             label: 'Analyze',
             color: Colors.orange,
             onTap: _currentFrame != null ? _requestAnalysis : null,
