@@ -31,8 +31,11 @@ class VoiceService:
     async def initialize(self):
         if self._initialized:
             return
-        print("Loading Whisper STT model (tiny, CPU)...")
-        self.stt_model = whisper.load_model("tiny", device="cpu")
+        import torch
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._fp16 = self._device == "cuda"
+        print(f"Loading Whisper STT model (tiny, {self._device})...")
+        self.stt_model = whisper.load_model("tiny", device=self._device)
         print("Voice service initialized")
         self._initialized = True
 
@@ -48,7 +51,7 @@ class VoiceService:
             result = self.stt_model.transcribe(
                 tmp_path,
                 language=language,
-                fp16=False
+                fp16=self._fp16
             )
             return {
                 "text": result["text"],
@@ -158,7 +161,8 @@ class VoiceService:
     def get_status(self) -> dict:
         return {
             "initialized": self._initialized,
-            "stt_model": "whisper-base",
+            "stt_model": "whisper-tiny",
+            "device": getattr(self, "_device", "cpu"),
             "tts_voice": voice_profile_service.get_active_profile().name,
             "llm_model": self.llm_model,
             "conversation_length": len(self._conversation_history),

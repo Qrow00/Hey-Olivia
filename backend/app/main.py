@@ -43,7 +43,11 @@ async def startup():
         await conn.run_sync(Base.metadata.create_all)
 
     await plugin_manager.register_plugin(MotionDetectorPlugin())
-    await hermes_browser.initialize()
+    
+    try:
+        await hermes_browser.initialize()
+    except Exception as e:
+        print(f"[HERMES BROWSER] Init deferred: {e}")
 
     print("J.A.R.V.I.S. v2.0.0 initialized")
 

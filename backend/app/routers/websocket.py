@@ -18,11 +18,33 @@ connected_clients: list[WebSocket] = []
 
 
 def _register_system_handlers():
+    from urllib.parse import quote
     scs = system_command_service
     command_registry.register_handler("open_app", scs.open_app)
     command_registry.register_handler("open_browser", scs.open_browser)
-    command_registry.register_handler("open_youtube", scs.open_youtube)
-    command_registry.register_handler("play_youtube", scs.play_youtube)
+
+    async def browser_open_youtube(query: str = "") -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
+        query = query.strip()
+        if query:
+            url = f"https://www.youtube.com/results?search_query={quote(query)}"
+        else:
+            url = "https://www.youtube.com"
+        return await hermes_browser.navigate("default", url)
+
+    async def browser_play_youtube(query: str = "") -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
+        query = query.strip()
+        if query:
+            url = f"https://www.youtube.com/results?search_query={quote(query)}"
+        else:
+            url = "https://music.youtube.com"
+        return await hermes_browser.navigate("default", url)
+
+    command_registry.register_handler("open_youtube", browser_open_youtube)
+    command_registry.register_handler("play_youtube", browser_play_youtube)
     command_registry.register_handler("open_file_explorer", scs.open_file_explorer)
     command_registry.register_handler("open_terminal", scs.open_terminal)
     command_registry.register_handler("open_opencode", scs.open_opencode)
@@ -143,6 +165,67 @@ client_viewer_sessions: dict[int, str] = {}
 client_camera_viewers: dict[int, str] = {}
 introduction_pending: set[int] = set()
 
+_heartbeat_task = None
+
+COMMAND_RESPONSES = {
+    "open_youtube": "Opening YouTube for you.",
+    "play_youtube": "Playing that on YouTube now.",
+    "open_browser": "Opening your browser.",
+    "open_app": "Opening that app for you.",
+    "close_app": "Closing that app.",
+    "screenshot": "Taking a screenshot.",
+    "set_volume": "Adjusting the volume.",
+    "mute": "Muted.",
+    "unmute": "Unmuted.",
+    "next_track": "Skipping to the next track.",
+    "previous_track": "Going back to the previous track.",
+    "play_pause": "Toggling playback.",
+    "shutdown": "Shutting down.",
+    "restart": "Restarting your PC.",
+    "lock_pc": "Locking your screen.",
+    "sleep_pc": "Putting your PC to sleep.",
+    "open_file_explorer": "Opening File Explorer.",
+    "open_terminal": "Opening terminal.",
+    "navigate_to": "Navigating there.",
+    "go_back": "Going back.",
+    "go_home": "Going home.",
+    "list_dir": "Here are your files.",
+    "search_files": "Searching for files.",
+    "browser_search": "Searching the web.",
+    "browser_navigate": "Navigating there.",
+    "browser_click": "Clicking that.",
+    "browser_type": "Typing that in.",
+    "browser_scroll": "Scrolling.",
+    "browser_screenshot": "Taking a screenshot.",
+    "browser_snapshot": "Getting page content.",
+    "browser_back": "Going back.",
+    "browser_forward": "Going forward.",
+    "remember": "I'll remember that.",
+    "recall": "Let me check my memory.",
+    "forget": "Done, I've forgotten that.",
+    "get_time": None,
+    "get_date": None,
+    "list_processes": None,
+    "get_system_info": None,
+    "get_disk_usage": None,
+}
+
+
+async def _heartbeat_loop():
+    while True:
+        await asyncio.sleep(15)
+        disconnected = []
+        for client in connected_clients:
+            try:
+                await client.send_json({"type": "ping"})
+            except Exception:
+                disconnected.append(client)
+        for client in disconnected:
+            try:
+                connected_clients.remove(client)
+            except ValueError:
+                pass
+
 
 async def broadcast(message: dict, exclude: WebSocket = None):
     for client in connected_clients:
@@ -168,13 +251,16 @@ async def websocket_endpoint(websocket: WebSocket):
     connected_clients.append(websocket)
     client_id = id(websocket)
 
+    global _heartbeat_task
+    if _heartbeat_task is None or _heartbeat_task.done():
+        _heartbeat_task = asyncio.create_task(_heartbeat_loop())
+
     try:
         await broadcast({
             "type": "client_connected",
             "client_id": client_id,
         }, websocket)
 
-        # Send time-based greeting on connect
         await send_greeting(websocket)
 
         while True:
@@ -184,9 +270,9 @@ async def websocket_endpoint(websocket: WebSocket):
             msg_type = message.get("type")
 
             if msg_type == "voice_chunk":
-                await handle_voice_chunk(websocket, message)
+                asyncio.create_task(handle_voice_chunk(websocket, message))
             elif msg_type == "text_message":
-                await handle_text_message(websocket, message)
+                asyncio.create_task(handle_text_message(websocket, message))
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
             elif msg_type == "device_register":
@@ -506,6 +592,10 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
         stt_result = await voice_service.speech_to_text(audio_data)
         transcription = stt_result["text"]
 
+        if not transcription.strip():
+            await websocket.send_json({"type": "avatar_state", "state": "idle"})
+            return
+
         command_result = command_registry.parse_command(transcription)
         if command_result["matched"]:
             if command_result["handler"] == "goodbye":
@@ -534,24 +624,58 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                 })
                 return
 
+            handler_name = command_result["handler"]
+            quick_response = COMMAND_RESPONSES.get(handler_name)
+
+            if quick_response is not None:
+                execution_task = asyncio.create_task(
+                    command_registry.execute_command(transcription)
+                )
+
+                profile = voice_profile_service.get_active_profile()
+                tts_task = asyncio.create_task(
+                    voice_service.text_to_speech(quick_response, voice=profile.voice)
+                )
+
+                execution, tts_audio = await asyncio.gather(execution_task, tts_task)
+
+                await websocket.send_json({
+                    "type": "command_response",
+                    "transcription": transcription,
+                    "command": command_result,
+                    "result": execution,
+                })
+
+                await websocket.send_json({
+                    "type": "avatar_state",
+                    "state": "speaking"
+                })
+
+                await websocket.send_json({
+                    "type": "voice_response",
+                    "transcription": transcription,
+                    "confidence": stt_result["confidence"],
+                    "response": quick_response,
+                    "audio": base64.b64encode(tts_audio).decode(),
+                    "model": "command_registry",
+                    "is_command": True,
+                })
+
+                await websocket.send_json({
+                    "type": "avatar_state",
+                    "state": "idle"
+                })
+                return
+
             execution = await command_registry.execute_command(transcription)
 
             result_data = execution.get("result", {})
             result_message = result_data.get("message", "Command executed.")
-            extra_info = ""
-            for k, v in result_data.items():
-                if k not in ("status", "message") and v:
-                    if isinstance(v, list):
-                        extra_info += f"\n{k}: {', '.join(str(i) for i in v[:10])}"
-                    elif isinstance(v, str) and len(v) > 5:
-                        extra_info += f"\n{k}: {v}"
-                    elif isinstance(v, dict):
-                        extra_info += f"\n{k}: {json.dumps(v, indent=None)[:500]}"
 
             profile = voice_profile_service.get_active_profile()
             try:
                 llm_response = await voice_service.chat_completion(
-                    message=f"The user said: \"{transcription}\"\nCommand result: {result_message}{extra_info}\n\nRespond with a short natural sentence (1-2 lines) about what was done. Be helpful and conversational.",
+                    message=f"The user said: \"{transcription}\"\nCommand result: {result_message}\n\nRespond with a short natural sentence (1-2 lines) about what was done.",
                     system_prompt=f"You are JARVIS. {personality_service.get_system_prompt()}\nKeep responses under 2 sentences.",
                 )
                 response_text = llm_response["response"]
@@ -597,32 +721,28 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                     execution_result = await handler(*params)
 
                     result_message = execution_result.get("message", "Command executed.")
-                    extra_info = ""
-                    for k, v in execution_result.items():
-                        if k not in ("status", "message") and v:
-                            if isinstance(v, list):
-                                extra_info += f"\n{k}: {', '.join(str(i) for i in v[:10])}"
-                            elif isinstance(v, str) and len(v) > 5:
-                                extra_info += f"\n{k}: {v}"
-                            elif isinstance(v, dict):
-                                extra_info += f"\n{k}: {json.dumps(v, indent=None)[:500]}"
+                    handler_name = llm_result.get("handler", "unknown")
+                    quick_response = COMMAND_RESPONSES.get(handler_name)
 
-                    profile = voice_profile_service.get_active_profile()
-                    try:
-                        llm_response = await voice_service.chat_completion(
-                            message=f"The user said: \"{transcription}\"\nCommand executed: {command_result.get('handler', 'unknown')}\nResult: {result_message}{extra_info}\n\nGenerate a brief natural response about what just happened. Never say 'Command executed' or 'Done'. Say something a human assistant would say, like 'I've opened Brave for you' or 'Here are your folders' or 'Muted your PC'. One sentence max.",
-                            system_prompt=f"You are JARVIS, a sophisticated AI assistant. {personality_service.get_system_prompt()}\nYou just executed a system command for the user. Respond naturally in 1 sentence. Never use robotic phrases like 'command executed' or 'task completed'.",
-                        )
-                        response_text = llm_response["response"]
-                    except:
-                        response_text = result_message if result_message and result_message != "Command executed." else "All done."
+                    if quick_response is not None:
+                        response_text = quick_response
+                    else:
+                        profile = voice_profile_service.get_active_profile()
+                        try:
+                            llm_response = await voice_service.chat_completion(
+                                message=f"The user said: \"{transcription}\"\nCommand executed: {handler_name}\nResult: {result_message}\n\nGenerate a brief natural response. One sentence max.",
+                                system_prompt=f"You are JARVIS. {personality_service.get_system_prompt()}\nRespond naturally in 1 sentence.",
+                            )
+                            response_text = llm_response["response"]
+                        except:
+                            response_text = result_message if result_message and result_message != "Command executed." else "All done."
 
                     tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice)
 
                     await websocket.send_json({
                         "type": "command_response",
                         "transcription": transcription,
-                        "command": {"handler": llm_result["handler"], "params": params},
+                        "command": {"handler": handler_name, "params": params},
                         "result": execution_result,
                     })
 
@@ -700,14 +820,17 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                 "state": "idle"
             })
         except:
-            await websocket.send_json({
-                "type": "error",
-                "message": f"Something went wrong: {type(e).__name__}: {e}"
-            })
-            await websocket.send_json({
-                "type": "avatar_state",
-                "state": "error"
-            })
+            try:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"Something went wrong: {type(e).__name__}: {e}"
+                })
+                await websocket.send_json({
+                    "type": "avatar_state",
+                    "state": "error"
+                })
+            except:
+                pass
 
 
 async def handle_text_message(websocket: WebSocket, message: dict):

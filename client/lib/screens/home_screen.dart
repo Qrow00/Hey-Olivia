@@ -20,10 +20,12 @@ class _HomeScreenState extends State<HomeScreen> {
   String _transcription = '';
   bool _isConnected = false;
   bool _wordPulse = false;
+  bool _isListening = false;
 
   StreamSubscription? _avatarSubscription;
   StreamSubscription? _transcriptionSubscription;
   StreamSubscription? _responseSubscription;
+  StreamSubscription? _vadSubscription;
   Timer? _wordPulseTimer;
   int _wordIndex = 0;
   List<String> _words = [];
@@ -34,6 +36,17 @@ class _HomeScreenState extends State<HomeScreen> {
     _voiceService = VoiceService(widget.webSocketService);
     _setupListeners();
     _setupConnectionWatch();
+    _autoStartListening();
+  }
+
+  void _autoStartListening() async {
+    await Future.delayed(Duration(seconds: 2));
+    if (mounted && !_isListening) {
+      final started = await _voiceService.startListening();
+      if (mounted) {
+        setState(() => _isListening = started);
+      }
+    }
   }
 
   void _setupListeners() {
@@ -59,6 +72,12 @@ class _HomeScreenState extends State<HomeScreen> {
       _wordIndex = 0;
       if (_avatarState == 'speaking') {
         _startWordPulse();
+      }
+    });
+
+    _vadSubscription = _voiceService.vadState.listen((state) {
+      if (mounted) {
+        setState(() => _isListening = state != VadState.idle);
       }
     });
   }
@@ -93,7 +112,10 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isConnected = widget.webSocketService.isConnected);
 
     widget.webSocketService.messages.listen((_) {
-      if (!_isConnected) setState(() => _isConnected = true);
+      if (!_isConnected) {
+        setState(() => _isConnected = true);
+        if (!_isListening) _autoStartListening();
+      }
     });
 
     Timer.periodic(Duration(seconds: 2), (timer) {
@@ -101,6 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final connected = widget.webSocketService.isConnected;
         if (connected != _isConnected) {
           setState(() => _isConnected = connected);
+          if (connected && !_isListening) _autoStartListening();
         }
       } else {
         timer.cancel();
@@ -114,17 +137,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _avatarSubscription?.cancel();
     _transcriptionSubscription?.cancel();
     _responseSubscription?.cancel();
+    _vadSubscription?.cancel();
     _voiceService.dispose();
     super.dispose();
   }
 
-  Future<void> _toggleVoice() async {
-    if (_voiceService.isRecording) {
+  Future<void> _toggleListening() async {
+    if (_isListening) {
       await _voiceService.stopListening();
+      setState(() => _isListening = false);
     } else {
-      await _voiceService.startListening();
+      final started = await _voiceService.startListening();
+      setState(() => _isListening = started);
     }
-    if (mounted) setState(() {});
   }
 
   @override
@@ -176,13 +201,34 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          Text(
-            'J.A.R.V.I.S.',
-            style: TextStyle(
-              color: Colors.cyan,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _isListening ? Colors.green : Colors.grey,
+                ),
+              ),
+              SizedBox(width: 6),
+              Text(
+                _isListening ? 'Listening' : 'Muted',
+                style: TextStyle(
+                  color: _isListening ? Colors.green : Colors.grey,
+                  fontSize: 12,
+                ),
+              ),
+              SizedBox(width: 12),
+              Text(
+                'J.A.R.V.I.S.',
+                style: TextStyle(
+                  color: Colors.cyan,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -229,15 +275,40 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildActionButton(
-                Icons.mic,
-                'Speak',
-                _toggleVoice,
-                isActive: _voiceService.isRecording,
-                activeColor: Colors.green,
-              ),
+              _buildMicButton(),
               _buildActionButton(Icons.chat, 'Type', _showTextInput),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMicButton() {
+    final isActive = _isListening;
+    final color = isActive ? Colors.green : Colors.red;
+
+    return GestureDetector(
+      onTap: _toggleListening,
+      child: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: color, width: 2),
+            ),
+            child: Icon(
+              isActive ? Icons.mic : Icons.mic_off,
+              color: color,
+              size: 28,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            isActive ? 'Listening' : 'Muted',
+            style: TextStyle(color: Colors.white70),
           ),
         ],
       ),

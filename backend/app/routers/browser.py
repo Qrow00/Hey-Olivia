@@ -86,7 +86,6 @@ async def get_session(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
     return {
         "session_id": session.session_id,
-        "url": session.page.url if session.page else None,
         "created_at": session.created_at,
         "last_active": session.last_active,
     }
@@ -159,14 +158,6 @@ async def go_back(session_id: str):
 @router.post("/forward")
 async def go_forward(session_id: str):
     result = await hermes_browser.go_forward(session_id)
-    if result["status"] == "error":
-        raise HTTPException(status_code=400, detail=result["message"])
-    return result
-
-
-@router.post("/javascript")
-async def execute_javascript(req: JavascriptRequest):
-    result = await hermes_browser.execute_javascript(req.session_id, req.script)
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
     return result

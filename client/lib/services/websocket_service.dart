@@ -9,6 +9,7 @@ class WebSocketService {
   bool _isConnected = false;
   String? _url;
   Timer? _reconnectTimer;
+  Timer? _pingTimer;
 
   Stream<Map<String, dynamic>> get messages => _messageController.stream;
   Stream<void> get exitApp => _exitController.stream;
@@ -17,6 +18,7 @@ class WebSocketService {
   void connect(String url) {
     _url = url;
     _reconnectTimer?.cancel();
+    _pingTimer?.cancel();
 
     try {
       _channel = WebSocketChannel.connect(Uri.parse(url));
@@ -26,25 +28,38 @@ class WebSocketService {
           if (_messageController.isClosed) return;
           final message = json.decode(data);
           _messageController.add(message);
+          if (message['type'] == 'pong') return;
           if (message['exit_app'] == true) {
             _exitController.add(null);
           }
         },
         onDone: () {
           _isConnected = false;
+          _pingTimer?.cancel();
           _scheduleReconnect();
         },
         onError: (error) {
           _isConnected = false;
+          _pingTimer?.cancel();
           _scheduleReconnect();
         },
       );
 
       _isConnected = true;
+      _startPing();
     } catch (e) {
       _isConnected = false;
       _scheduleReconnect();
     }
+  }
+
+  void _startPing() {
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(Duration(seconds: 20), (_) {
+      if (_isConnected) {
+        send({'type': 'ping'});
+      }
+    });
   }
 
   void _scheduleReconnect() {
@@ -68,6 +83,7 @@ class WebSocketService {
 
   void disconnect() {
     _reconnectTimer?.cancel();
+    _pingTimer?.cancel();
     try {
       _channel?.sink.close();
     } catch (e) {}

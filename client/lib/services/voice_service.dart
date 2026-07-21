@@ -1,16 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'websocket_service.dart';
 
+enum VadState { idle, listening, speaking, processing }
+
 class VoiceService {
   final WebSocketService _webSocketService;
-  bool _isRecording = false;
   bool _isDisposed = false;
   Process? _recordingProcess;
-  String? _recordingPath;
   StreamSubscription? _stderrSub;
   StreamSubscription? _stdoutSub;
 
@@ -21,12 +22,32 @@ class VoiceService {
   final _transcriptionController = StreamController<String>.broadcast();
   final _responseController = StreamController<String>.broadcast();
   final _exitController = StreamController<void>.broadcast();
+  final _vadStateController = StreamController<VadState>.broadcast();
   String _currentState = 'idle';
+
+  VadState _vadState = VadState.idle;
+  List<int> _audioBuffer = [];
+  int _silenceFrames = 0;
+  int _speechFrames = 0;
+  bool _isProcessing = false;
+  bool _alwaysListening = false;
+
+  static const int _sampleRate = 16000;
+  static const int _bytesPerSample = 2;
+  static const int _frameSize = 960;
+  static const double _speechThreshold = 400.0;
+  static const int _speechStartFrames = 3;
+  static const int _silenceEndFrames = 25;
+  static const int _minSpeechFrames = 5;
+  static const int _maxBufferSeconds = 30;
 
   Stream<String> get avatarState => _avatarStateController.stream;
   Stream<String> get transcription => _transcriptionController.stream;
   Stream<String> get response => _responseController.stream;
   Stream<void> get exitApp => _exitController.stream;
+  Stream<VadState> get vadState => _vadStateController.stream;
+  bool get isListening => _alwaysListening;
+  bool get isRecording => _alwaysListening;
 
   static String get _ffmpegPath {
     final ffmpegDir = '${Platform.environment['USERPROFILE']}\\ffmpeg';
@@ -80,6 +101,13 @@ class VoiceService {
       case 'avatar_state':
         _currentState = message['state'];
         _safeAdd(_avatarStateController, message['state']);
+        if (message['state'] == 'idle' || message['state'] == 'error') {
+          _isProcessing = false;
+          if (_alwaysListening) {
+            _vadState = VadState.listening;
+            _safeAdd(_vadStateController, _vadState);
+          }
+        }
         break;
       case 'voice_response':
         _safeAdd(_transcriptionController, message['transcription'] ?? '');
@@ -95,6 +123,7 @@ class VoiceService {
         break;
       case 'error':
         _safeAdd(_avatarStateController, 'error');
+        _isProcessing = false;
         break;
     }
   }
@@ -112,7 +141,7 @@ class VoiceService {
       final safePath = file.path.replaceAll("'", "''");
 
       print('[Voice] Playing TTS via .NET MediaPlayer...');
-      final result = await Process.run('powershell', [
+      await Process.run('powershell', [
         '-NoProfile', '-NonInteractive', '-Command',
         "Add-Type -AssemblyName PresentationCore; "
         "\$p = New-Object System.Windows.Media.MediaPlayer; "
@@ -130,7 +159,7 @@ class VoiceService {
         "} "
         "\$p.Stop(); \$p.Close();",
       ]);
-      print('[Voice] TTS playback done (exit: ${result.exitCode})');
+      print('[Voice] TTS playback done');
 
       try {
         if (await file.exists()) await file.delete();
@@ -205,7 +234,7 @@ class VoiceService {
   }
 
   Future<bool> startListening() async {
-    if (_isRecording || _isDisposed) return false;
+    if (_alwaysListening || _isDisposed) return false;
 
     try {
       String micName;
@@ -220,38 +249,31 @@ class VoiceService {
         micName = detected;
       }
 
-      final dir = await getTemporaryDirectory();
-      _recordingPath = '${dir.path}/recording.wav';
-
       final args = [
         '-y', '-f', 'dshow',
         '-i', 'audio=$micName',
-        '-ar', '16000', '-ac', '1',
+        '-ar', '$_sampleRate', '-ac', '1',
+        '-f', 's16le',
         '-loglevel', 'error',
-        _recordingPath!,
+        'pipe:1',
       ];
 
-      print('[Voice] ffmpeg: $args');
+      print('[Voice] Starting always-on listening: ffmpeg $args');
 
       _recordingProcess = await Process.start(_ffmpegPath, args);
 
-      _stdoutSub = _recordingProcess!.stdout.listen(
-        (_) {},
-        onError: (_) {},
-      );
-      _stderrSub = _recordingProcess!.stderr.listen(
-        (_) {},
-        onError: (_) {},
-      );
-
-      _isRecording = true;
+      _alwaysListening = true;
+      _vadState = VadState.listening;
+      _safeAdd(_vadStateController, _vadState);
       _safeAdd(_avatarStateController, 'listening');
-      print('[Voice] Recording started');
+      print('[Voice] Always-on listening started');
+
+      _processAudioStream(_recordingProcess!.stdout);
+
       return true;
     } catch (e) {
-      print('[Voice] Start recording error: $e');
-      _isRecording = false;
-      _recordingPath = null;
+      print('[Voice] Start listening error: $e');
+      _alwaysListening = false;
       return false;
     }
   }
@@ -261,11 +283,160 @@ class VoiceService {
     return mics.isNotEmpty ? mics.first : null;
   }
 
-  Future<void> stopListening() async {
-    if (!_isRecording || _isDisposed) return;
+  void _processAudioStream(Stream<List<int>> audioStream) {
+    List<int> remaining = [];
 
-    _isRecording = false;
-    _safeAdd(_avatarStateController, 'thinking');
+    audioStream.listen(
+      (data) {
+        final combined = [...remaining, ...data];
+        remaining = [];
+
+        int offset = 0;
+        while (offset + _frameSize * _bytesPerSample <= combined.length) {
+          final frame = combined.sublist(offset, offset + _frameSize * _bytesPerSample);
+          offset += _frameSize * _bytesPerSample;
+          _processFrame(frame);
+        }
+
+        if (offset < combined.length) {
+          remaining = combined.sublist(offset);
+        }
+      },
+      onDone: () {
+        print('[Voice] Audio stream ended');
+        if (_alwaysListening) {
+          _alwaysListening = false;
+          _vadState = VadState.idle;
+          _safeAdd(_vadStateController, _vadState);
+          _safeAdd(_avatarStateController, 'idle');
+        }
+      },
+      onError: (e) {
+        print('[Voice] Audio stream error: $e');
+      },
+    );
+  }
+
+  void _processFrame(List<int> frame) {
+    if (_isProcessing || _isDisposed) return;
+
+    double rms = 0;
+    for (int i = 0; i < frame.length; i += 2) {
+      if (i + 1 < frame.length) {
+        final sample = (frame[i] | (frame[i + 1] << 8)).toSigned(16);
+        rms += sample * sample;
+      }
+    }
+    rms = sqrt(rms / (_frameSize));
+
+    switch (_vadState) {
+      case VadState.idle:
+      case VadState.listening:
+        if (rms > _speechThreshold) {
+          _speechFrames++;
+          _silenceFrames = 0;
+          if (_speechFrames >= _speechStartFrames) {
+            _vadState = VadState.speaking;
+            _safeAdd(_vadStateController, _vadState);
+            _safeAdd(_avatarStateController, 'listening');
+            _audioBuffer.addAll(frame);
+            _speechFrames = 0;
+            print('[Voice] Speech detected');
+          }
+        } else {
+          _speechFrames = 0;
+        }
+        break;
+
+      case VadState.speaking:
+        _audioBuffer.addAll(frame);
+
+        if (rms < _speechThreshold) {
+          _silenceFrames++;
+          _speechFrames = 0;
+        } else {
+          _silenceFrames = 0;
+          _speechFrames++;
+        }
+
+        final maxFrames = _maxBufferSeconds * _sampleRate / _frameSize;
+        if (_audioBuffer.length > maxFrames * _frameSize * _bytesPerSample) {
+          print('[Voice] Buffer max reached, sending');
+          _sendBufferedAudio();
+        } else if (_silenceFrames >= _silenceEndFrames && _speechFrames < _minSpeechFrames) {
+          print('[Voice] Silence detected, sending');
+          _sendBufferedAudio();
+        }
+        break;
+
+      case VadState.processing:
+        break;
+    }
+  }
+
+  void _sendBufferedAudio() {
+    if (_audioBuffer.isEmpty || _isProcessing) {
+      _audioBuffer.clear();
+      _vadState = VadState.listening;
+      _safeAdd(_vadStateController, _vadState);
+      return;
+    }
+
+    final totalSamples = _audioBuffer.length ~/ _bytesPerSample;
+    final dataSize = _audioBuffer.length;
+    final fileSize = 44 + dataSize;
+
+    final wav = ByteData(fileSize);
+    int offset = 0;
+
+    void writeString(String s) {
+      for (int i = 0; i < s.length; i++) {
+        offset++;
+        wav.setUint8(offset - 1, s.codeUnitAt(i));
+      }
+    }
+
+    writeString('RIFF');
+    wav.setUint32(offset, fileSize - 8, Endian.little); offset += 4;
+    writeString('WAVE');
+    writeString('fmt ');
+    wav.setUint32(offset, 16, Endian.little); offset += 4;
+    wav.setUint16(offset, 1, Endian.little); offset += 2;
+    wav.setUint16(offset, 1, Endian.little); offset += 2;
+    wav.setUint32(offset, _sampleRate, Endian.little); offset += 4;
+    wav.setUint32(offset, _sampleRate * _bytesPerSample, Endian.little); offset += 4;
+    wav.setUint16(offset, _bytesPerSample, Endian.little); offset += 2;
+    wav.setUint16(offset, 16, Endian.little); offset += 2;
+    writeString('data');
+    wav.setUint32(offset, dataSize, Endian.little); offset += 4;
+
+    for (final byte in _audioBuffer) {
+      wav.setUint8(offset, byte);
+      offset++;
+    }
+
+    _audioBuffer.clear();
+    _silenceFrames = 0;
+    _speechFrames = 0;
+    _isProcessing = true;
+    _vadState = VadState.processing;
+    _safeAdd(_vadStateController, _vadState);
+
+    final wavBytes = wav.buffer.asUint8List();
+    print('[Voice] Sending ${wavBytes.length} bytes (${totalSamples / _sampleRate}s)');
+
+    _webSocketService.send({
+      'type': 'voice_chunk',
+      'audio': base64Encode(wavBytes),
+    });
+  }
+
+  Future<void> stopListening() async {
+    if (!_alwaysListening || _isDisposed) return;
+
+    _alwaysListening = false;
+    _vadState = VadState.idle;
+    _safeAdd(_vadStateController, _vadState);
 
     try {
       if (_recordingProcess != null) {
@@ -288,43 +459,15 @@ class VoiceService {
         _recordingProcess = null;
       }
 
-      await Future.delayed(Duration(milliseconds: 300));
+      _audioBuffer.clear();
+      _silenceFrames = 0;
+      _speechFrames = 0;
 
-      if (_recordingPath == null) {
-        _safeAdd(_avatarStateController, 'idle');
-        return;
-      }
-
-      final file = File(_recordingPath!);
-      if (!await file.exists()) {
-        print('[Voice] Recording file missing');
-        _safeAdd(_avatarStateController, 'idle');
-        return;
-      }
-
-      final audioBytes = await file.readAsBytes();
-      print('[Voice] Recording: ${audioBytes.length} bytes');
-
-      if (audioBytes.length < 1000) {
-        print('[Voice] Recording too short');
-        _safeAdd(_avatarStateController, 'idle');
-        try { await file.delete(); } catch (_) {}
-        return;
-      }
-
-      _webSocketService.send({
-        'type': 'voice_chunk',
-        'audio': base64Encode(audioBytes),
-      });
-      print('[Voice] Sent voice_chunk');
-
-      try { await file.delete(); } catch (_) {}
+      _safeAdd(_avatarStateController, 'idle');
     } catch (e) {
-      print('[Voice] Stop recording error: $e');
+      print('[Voice] Stop listening error: $e');
       _safeAdd(_avatarStateController, 'idle');
     }
-
-    _recordingPath = null;
   }
 
   void sendTextMessage(String text, {String? systemPrompt}) {
@@ -335,10 +478,9 @@ class VoiceService {
     });
   }
 
-  bool get isRecording => _isRecording;
-
   void dispose() {
     _isDisposed = true;
+    _alwaysListening = false;
     _recordingProcess?.kill();
     _stderrSub?.cancel();
     _stdoutSub?.cancel();
@@ -346,5 +488,6 @@ class VoiceService {
     if (!_transcriptionController.isClosed) _transcriptionController.close();
     if (!_responseController.isClosed) _responseController.close();
     if (!_exitController.isClosed) _exitController.close();
+    if (!_vadStateController.isClosed) _vadStateController.close();
   }
 }

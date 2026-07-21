@@ -133,11 +133,11 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
-            patterns=[r"play (?:the )?(.+)", r"play music (.+)"],
+            patterns=[r"^play (?:the )?(?:song |track )?(?:called )?(.+)", r"^play music (.+)", r"^play some (.+)"],
             handler="play_music",
-            description="Play music",
+            description="Play local music",
             category="media",
-            examples=["Play some music", "Play jazz"],
+            examples=["Play some music", "Play jazz", "Play some lofi"],
         ))
 
         self.register(CommandPattern(
@@ -397,19 +397,35 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
-            patterns=[r"(?:go to|open|search) (?:youtube\.com|youtube) (.+)", r"youtube (.+)", r"watch (.+) on youtube"],
+            patterns=[
+                r"(?:go to|open|search|find|look up|browse) (?:on )?(?:youtube\.com|youtube) (?:for )?(.+)",
+                r"youtube (?:search (?:for )?)?(.+)",
+                r"watch (.+) on youtube",
+                r"search youtube (?:for )?(.+)",
+                r"(?:can you |please )?(?:go to|open) youtube",
+            ],
             handler="open_youtube",
             description="Search YouTube",
             category="desktop",
-            examples=["YouTube lofi hip hop", "Watch cooking tutorials on YouTube"],
+            examples=["YouTube lofi hip hop", "Search YouTube for cooking tutorials", "Find funny cats on youtube"],
         ))
 
         self.register(CommandPattern(
-            patterns=[r"play (.+) on (?:youtube|yt)", r"play on youtube", r"play youtube (.+)"],
+            patterns=[
+                r"play (.+) on (?:youtube|yt)",
+                r"play on (?:youtube|yt)",
+                r"play (?:on )?(?:youtube|yt) (.+)",
+                r"play (?:some )?(.+?) (?:on|on ) (?:youtube|yt)",
+                r"(?:can you |please )?play (?:some )?(?:music|a song|a video|something) on (?:youtube|yt)",
+                r"open (?:youtube|yt) (?:and )?(?:play|search) (.+)",
+                r"(?:search|find|look up) (?:for )?(.+?) on (?:youtube|yt)",
+                r"(?:i (?:want to|would like to|wanna)) (?:play|listen to|watch) (.+?) on (?:youtube|yt)",
+                r"(?:put on|queue up|start playing) (.+?) on (?:youtube|yt)",
+            ],
             handler="play_youtube",
             description="Play music on YouTube",
             category="desktop",
-            examples=["Play jazz on YouTube", "Play YouTube music"],
+            examples=["Play jazz on YouTube", "Play lofi on YouTube", "Open YouTube and play music", "Search for classical music on youtube"],
         ))
 
         self.register(CommandPattern(
