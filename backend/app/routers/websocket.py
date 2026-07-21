@@ -10,6 +10,7 @@ from app.services.wearable_service import wearable_service
 from app.services.command_registry import command_registry
 from app.services.vision_service import vision_service
 from app.services.system_command_service import system_command_service
+from app.services.hermes_browser import hermes_browser
 
 router = APIRouter()
 
@@ -59,6 +60,53 @@ def _register_system_handlers():
     from app.services.knowledge_service import knowledge_service
     command_registry.register_handler("knowledge_summary", lambda: knowledge_service.get_stats())
     command_registry.register_handler("knowledge_search", knowledge_service.search)
+
+    async def browser_search_handler(query: str) -> dict:
+        return await hermes_browser.search_google("default", query)
+
+    async def browser_navigate_handler(url: str) -> dict:
+        return await hermes_browser.navigate("default", url)
+
+    async def browser_click_handler(ref: str) -> dict:
+        return await hermes_browser.click("default", ref)
+
+    async def browser_type_handler(text: str, ref: str = "input") -> dict:
+        return await hermes_browser.type_text("default", ref, text)
+
+    async def browser_screenshot_handler() -> dict:
+        return await hermes_browser.screenshot("default")
+
+    async def browser_scroll_handler(direction: str = "down") -> dict:
+        return await hermes_browser.scroll("default", direction)
+
+    async def browser_snapshot_handler() -> dict:
+        return await hermes_browser.get_snapshot("default")
+
+    async def browser_back_handler() -> dict:
+        return await hermes_browser.go_back("default")
+
+    async def browser_forward_handler() -> dict:
+        return await hermes_browser.go_forward("default")
+
+    async def browser_start_handler() -> dict:
+        session = await hermes_browser.create_session("default")
+        return {"status": "success", "session_id": session.session_id}
+
+    async def browser_stop_handler() -> dict:
+        await hermes_browser.destroy_session("default")
+        return {"status": "success"}
+
+    command_registry.register_handler("browser_search", browser_search_handler)
+    command_registry.register_handler("browser_navigate", browser_navigate_handler)
+    command_registry.register_handler("browser_click", browser_click_handler)
+    command_registry.register_handler("browser_type", browser_type_handler)
+    command_registry.register_handler("browser_screenshot", browser_screenshot_handler)
+    command_registry.register_handler("browser_scroll", browser_scroll_handler)
+    command_registry.register_handler("browser_snapshot", browser_snapshot_handler)
+    command_registry.register_handler("browser_back", browser_back_handler)
+    command_registry.register_handler("browser_forward", browser_forward_handler)
+    command_registry.register_handler("browser_start", browser_start_handler)
+    command_registry.register_handler("browser_stop", browser_stop_handler)
 
 
 _register_system_handlers()
@@ -157,6 +205,24 @@ async def websocket_endpoint(websocket: WebSocket):
                 await handle_voice_profile_switch(websocket, message)
             elif msg_type == "personality_update":
                 await handle_personality_update(websocket, message)
+            elif msg_type == "browser_create_session":
+                await handle_browser_create_session(websocket, message)
+            elif msg_type == "browser_destroy_session":
+                await handle_browser_destroy_session(websocket, message)
+            elif msg_type == "browser_navigate":
+                await handle_browser_navigate(websocket, message)
+            elif msg_type == "browser_click":
+                await handle_browser_click(websocket, message)
+            elif msg_type == "browser_type":
+                await handle_browser_type(websocket, message)
+            elif msg_type == "browser_screenshot":
+                await handle_browser_screenshot(websocket, message)
+            elif msg_type == "browser_snapshot":
+                await handle_browser_snapshot(websocket, message)
+            elif msg_type == "browser_scroll":
+                await handle_browser_scroll(websocket, message)
+            elif msg_type == "browser_search":
+                await handle_browser_search(websocket, message)
             elif msg_type == "farewell":
                 await handle_farewell(websocket)
             elif msg_type == "greeting":
@@ -1354,3 +1420,199 @@ async def handle_personality_update(websocket: WebSocket, message: dict):
         "type": "personality_updated",
         "result": result,
     })
+
+
+async def handle_browser_create_session(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id", "default")
+    viewport_width = message.get("viewport_width", 1280)
+    viewport_height = message.get("viewport_height", 720)
+
+    session = await hermes_browser.create_session(
+        session_id=session_id,
+        viewport_width=viewport_width,
+        viewport_height=viewport_height,
+    )
+
+    await websocket.send_json({
+        "type": "browser_session_created",
+        "session_id": session.session_id,
+        "created_at": session.created_at,
+    })
+
+
+async def handle_browser_destroy_session(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id")
+    if session_id:
+        await hermes_browser.destroy_session(session_id)
+
+    await websocket.send_json({
+        "type": "browser_session_destroyed",
+        "session_id": session_id,
+    })
+
+
+async def handle_browser_navigate(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id", "default")
+    url = message.get("url")
+
+    if not url:
+        await websocket.send_json({
+            "type": "error",
+            "message": "url required",
+        })
+        return
+
+    await websocket.send_json({
+        "type": "browser_navigating",
+        "session_id": session_id,
+        "url": url,
+    })
+
+    result = await hermes_browser.navigate(session_id, url)
+
+    await websocket.send_json({
+        "type": "browser_navigate_result",
+        "session_id": session_id,
+        "result": result,
+    })
+
+    if result["status"] == "success":
+        screenshot_result = await hermes_browser.screenshot(session_id)
+        if screenshot_result["status"] == "success":
+            await websocket.send_json({
+                "type": "browser_screenshot",
+                "session_id": session_id,
+                "screenshot": screenshot_result["screenshot"],
+                "url": screenshot_result["url"],
+                "title": screenshot_result["title"],
+            })
+
+
+async def handle_browser_click(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id", "default")
+    ref = message.get("ref")
+
+    if not ref:
+        await websocket.send_json({
+            "type": "error",
+            "message": "ref required",
+        })
+        return
+
+    result = await hermes_browser.click(session_id, ref)
+
+    await websocket.send_json({
+        "type": "browser_click_result",
+        "session_id": session_id,
+        "result": result,
+    })
+
+    if result["status"] == "success":
+        screenshot_result = await hermes_browser.screenshot(session_id)
+        if screenshot_result["status"] == "success":
+            await websocket.send_json({
+                "type": "browser_screenshot",
+                "session_id": session_id,
+                "screenshot": screenshot_result["screenshot"],
+                "url": screenshot_result["url"],
+                "title": screenshot_result["title"],
+            })
+
+
+async def handle_browser_type(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id", "default")
+    ref = message.get("ref")
+    text = message.get("text")
+
+    if not ref or text is None:
+        await websocket.send_json({
+            "type": "error",
+            "message": "ref and text required",
+        })
+        return
+
+    result = await hermes_browser.type_text(session_id, ref, text)
+
+    await websocket.send_json({
+        "type": "browser_type_result",
+        "session_id": session_id,
+        "result": result,
+    })
+
+
+async def handle_browser_screenshot(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id", "default")
+
+    result = await hermes_browser.screenshot(session_id)
+
+    await websocket.send_json({
+        "type": "browser_screenshot",
+        "session_id": session_id,
+        "screenshot": result.get("screenshot"),
+        "url": result.get("url"),
+        "title": result.get("title"),
+        "status": result["status"],
+    })
+
+
+async def handle_browser_snapshot(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id", "default")
+
+    result = await hermes_browser.get_snapshot(session_id)
+
+    await websocket.send_json({
+        "type": "browser_snapshot",
+        "session_id": session_id,
+        "result": result,
+    })
+
+
+async def handle_browser_scroll(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id", "default")
+    direction = message.get("direction", "down")
+    amount = message.get("amount", 500)
+
+    result = await hermes_browser.scroll(session_id, direction, amount)
+
+    await websocket.send_json({
+        "type": "browser_scroll_result",
+        "session_id": session_id,
+        "result": result,
+    })
+
+
+async def handle_browser_search(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id", "default")
+    query = message.get("query")
+
+    if not query:
+        await websocket.send_json({
+            "type": "error",
+            "message": "query required",
+        })
+        return
+
+    await websocket.send_json({
+        "type": "browser_searching",
+        "session_id": session_id,
+        "query": query,
+    })
+
+    result = await hermes_browser.search_google(session_id, query)
+
+    await websocket.send_json({
+        "type": "browser_search_result",
+        "session_id": session_id,
+        "result": result,
+    })
+
+    if result["status"] == "success":
+        screenshot_result = await hermes_browser.screenshot(session_id)
+        if screenshot_result["status"] == "success":
+            await websocket.send_json({
+                "type": "browser_screenshot",
+                "session_id": session_id,
+                "screenshot": screenshot_result["screenshot"],
+                "url": screenshot_result["url"],
+                "title": screenshot_result["title"],
+            })

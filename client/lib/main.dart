@@ -10,6 +10,7 @@ import 'screens/camera_screen.dart';
 import 'screens/wearable_screen.dart';
 import 'screens/smart_home_screen.dart';
 import 'screens/personality_screen.dart';
+import 'screens/browser_screen.dart';
 import 'services/websocket_service.dart';
 import 'services/device_service.dart';
 import 'services/screen_share_service.dart';
@@ -17,6 +18,7 @@ import 'services/camera_service.dart';
 import 'services/wearable_service.dart';
 import 'services/smart_home_service.dart';
 import 'services/vision_service.dart';
+import 'services/browser_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -54,6 +56,7 @@ class _MainScreenState extends State<MainScreen> {
   late final WearableService _wearableService;
   late final SmartHomeService _smartHomeService;
   late final VisionService _visionService;
+  late final BrowserService _browserService;
   late final List<Widget> _screens;
   StreamSubscription? _exitSub;
 
@@ -69,6 +72,7 @@ class _MainScreenState extends State<MainScreen> {
     _wearableService = WearableService(_webSocketService);
     _smartHomeService = SmartHomeService(_webSocketService);
     _visionService = VisionService(_webSocketService);
+    _browserService = BrowserService(_webSocketService);
 
     _screens = [
       HomeScreen(webSocketService: _webSocketService),
@@ -78,6 +82,7 @@ class _MainScreenState extends State<MainScreen> {
       WearableScreen(wearableService: _wearableService),
       SmartHomeScreen(smartHomeService: _smartHomeService),
       PersonalityScreen(),
+      BrowserScreen(browserService: _browserService),
       SettingsScreen(),
     ];
 
@@ -106,6 +111,7 @@ class _MainScreenState extends State<MainScreen> {
     _wearableService.dispose();
     _smartHomeService.dispose();
     _visionService.dispose();
+    _browserService.dispose();
     super.dispose();
   }
 
@@ -130,6 +136,7 @@ class _MainScreenState extends State<MainScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.watch, size: 20), label: 'Health'),
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined, size: 20), label: 'Smart'),
           BottomNavigationBarItem(icon: Icon(Icons.psychology, size: 20), label: 'Mind'),
+          BottomNavigationBarItem(icon: Icon(Icons.language, size: 20), label: 'Browser'),
           BottomNavigationBarItem(icon: Icon(Icons.settings, size: 20), label: 'Settings'),
         ],
       ),

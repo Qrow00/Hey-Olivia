@@ -273,7 +273,95 @@ class CommandRegistry:
             handler="goodbye",
             description="Say goodbye and close the app",
             category="system",
-            examples=["Good bye", "Bye", "See you later", "Exit"],
+            examples=["Good bye", r"Bye", "See you later", "Exit"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"search (?:for )?(.+)", r"google (.+)", r"look up (.+)"],
+            handler="browser_search",
+            description="Search Google for a query",
+            category="browser",
+            examples=["Search for Flutter docs", "Google weather today", "Look up restaurants near me"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:open|go to|visit|navigate to) (?:https?://)?(.+)"],
+            handler="browser_navigate",
+            description="Navigate to a website",
+            category="browser",
+            examples=["Open github.com", "Go to youtube.com", "Visit example.com"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"click (.+)", r"press (.+)"],
+            handler="browser_click",
+            description="Click an element on the page",
+            category="browser",
+            examples=["Click the search button", "Press submit"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"type (.+) in (.+)", r"enter (.+) in (.+)", r"input (.+) into (.+)"],
+            handler="browser_type",
+            description="Type text into a form field",
+            category="browser",
+            examples=["Type hello in the search box", "Enter my email in the field"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"take (?:a )?screenshot", r"capture (?:the )?page", r"snapshot"],
+            handler="browser_screenshot",
+            description="Take a screenshot of the current page",
+            category="browser",
+            examples=["Take a screenshot", "Capture the page"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"scroll (?:the )?(?:page )?(?:up|down)", r"(?:go )?(?:up|down) (?:the )?page"],
+            handler="browser_scroll",
+            description="Scroll the page up or down",
+            category="browser",
+            examples=["Scroll down", "Go up the page", "Scroll the page down"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"what(?:'s| is) (?:on )?(?:the )?page", r"read (?:the )?page", r"what do you see (?:on )?(?:the )?page"],
+            handler="browser_snapshot",
+            description="Get the accessibility tree of the current page",
+            category="browser",
+            examples=["What's on the page?", "Read the page", "What do you see?"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"go back", r"(?:navigate )?back"],
+            handler="browser_back",
+            description="Go back to the previous page",
+            category="browser",
+            examples=["Go back", "Navigate back"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"go forward", r"(?:navigate )?forward"],
+            handler="browser_forward",
+            description="Go forward to the next page",
+            category="browser",
+            examples=["Go forward", "Navigate forward"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"start (?:a )?browser", r"open browser", r"launch browser"],
+            handler="browser_start",
+            description="Start a browser session",
+            category="browser",
+            examples=["Start a browser", "Open browser"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"stop (?:the )?browser", r"close browser", r"quit browser"],
+            handler="browser_stop",
+            description="Stop the browser session",
+            category="browser",
+            examples=["Stop the browser", "Close browser"],
         ))
 
         self.register(CommandPattern(
@@ -752,6 +840,11 @@ RULES:
 - For "open_file_explorer": params should be the folder name that matches what the user has. E.g. "open my onedrive" -> ["onedrive"]
 - For "navigate_to": params should be an actual folder the user has from the folder list above
 - For "play_youtube"/"open_youtube": params should be the search query
+- For "browser_search": params should be the search query
+- For "browser_navigate": params should be the URL or website name
+- For "browser_click": params should be the element description
+- For "browser_type": params should be [text, field_description]
+- For "browser_scroll": params should be ["up"] or ["down"]
 - Remove filler words like "please", "the", "my", "a", "app", "browser", "folder" from app names
 - If the user mentions a folder that exists on their PC, use navigate_to or open_file_explorer accordingly
 - If no command matches, return: {{"handler": null, "params": []}}
@@ -787,6 +880,17 @@ Examples:
 - "what do you know about me" -> {{"handler": "knowledge_search", "params": ["me"]}}
 - "what have you learned" -> {{"handler": "knowledge_summary", "params": []}}
 - "tell me about my preferences" -> {{"handler": "knowledge_search", "params": ["preferences"]}}
+- "search for flutter docs" -> {{"handler": "browser_search", "params": ["flutter docs"]}}
+- "google weather today" -> {{"handler": "browser_search", "params": ["weather today"]}}
+- "open github.com" -> {{"handler": "browser_navigate", "params": ["github.com"]}}
+- "go to youtube.com" -> {{"handler": "browser_navigate", "params": ["youtube.com"]}}
+- "click the search button" -> {{"handler": "browser_click", "params": ["search button"]}}
+- "type hello in the search box" -> {{"handler": "browser_type", "params": ["hello", "search box"]}}
+- "take a screenshot" -> {{"handler": "browser_screenshot", "params": []}}
+- "scroll down" -> {{"handler": "browser_scroll", "params": ["down"]}}
+- "what's on the page" -> {{"handler": "browser_snapshot", "params": []}}
+- "start a browser" -> {{"handler": "browser_start", "params": []}}
+- "stop the browser" -> {{"handler": "browser_stop", "params": []}}
 
 Return ONLY valid JSON, no explanation."""
 

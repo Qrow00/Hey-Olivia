@@ -3,11 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import (
     devices, conversations, settings, commands, websocket, voice,
     screen_share, cameras, wearables, smart_home, vision, plugins,
-    personality, voice_profiles,
+    personality, voice_profiles, browser,
 )
 from app.models.database import engine, Base
 from app.plugins.manager import plugin_manager
 from app.plugins.motion_detector import MotionDetectorPlugin
+from app.services.hermes_browser import hermes_browser
 
 app = FastAPI(title="J.A.R.V.I.S. API", version="2.0.0")
 
@@ -33,6 +34,7 @@ app.include_router(vision.router, prefix="/api/v1/vision", tags=["vision"])
 app.include_router(plugins.router, prefix="/api/v1/plugins", tags=["plugins"])
 app.include_router(personality.router, prefix="/api/v1/personality", tags=["personality"])
 app.include_router(voice_profiles.router, prefix="/api/v1/voice-profiles", tags=["voice-profiles"])
+app.include_router(browser.router, prefix="/api/v1/browser", tags=["browser"])
 
 
 @app.on_event("startup")
@@ -41,6 +43,7 @@ async def startup():
         await conn.run_sync(Base.metadata.create_all)
 
     await plugin_manager.register_plugin(MotionDetectorPlugin())
+    await hermes_browser.initialize()
 
     print("J.A.R.V.I.S. v2.0.0 initialized")
 
@@ -49,6 +52,7 @@ async def startup():
 async def shutdown():
     from app.services.conversation_memory import conversation_memory
     conversation_memory.save_on_exit()
+    await hermes_browser.shutdown()
     print("J.A.R.V.I.S. shutdown — memory saved")
 
 
@@ -80,5 +84,6 @@ async def api_root():
             "plugins": "/api/v1/plugins",
             "personality": "/api/v1/personality",
             "voice-profiles": "/api/v1/voice-profiles",
+            "browser": "/api/v1/browser",
         },
     }
