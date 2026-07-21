@@ -36,17 +36,21 @@ class HermesBrowserService:
         self._cleanup_task: Optional[asyncio.Task] = None
 
     async def initialize(self):
-        self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(
-            headless=False,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-            ]
-        )
-        self._cleanup_task = asyncio.create_task(self._cleanup_loop())
-        print("Hermes Browser Service initialized")
+        try:
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.launch(
+                headless=False,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                ]
+            )
+            self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+            print("Hermes Browser Service initialized")
+        except Exception as e:
+            print(f"[HERMES BROWSER WARNING] Failed to initialize: {e}")
+            print("Browser commands will not work. Install playwright: pip install playwright && playwright install chromium")
 
     async def shutdown(self):
         if self._cleanup_task:
@@ -77,6 +81,9 @@ class HermesBrowserService:
         viewport_height: int = 720,
         persist_cookies: bool = True
     ) -> BrowserSession:
+        if not self._browser:
+            raise Exception("Browser not initialized. Install playwright: pip install playwright && playwright install chromium")
+
         if session_id in self._sessions:
             await self.destroy_session(session_id)
 

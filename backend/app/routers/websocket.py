@@ -61,40 +61,68 @@ def _register_system_handlers():
     command_registry.register_handler("knowledge_summary", lambda: knowledge_service.get_stats())
     command_registry.register_handler("knowledge_search", knowledge_service.search)
 
+    async def _ensure_browser_session() -> bool:
+        session = hermes_browser.get_session("default")
+        if not session:
+            try:
+                await hermes_browser.create_session("default")
+                return True
+            except Exception:
+                return False
+        return True
+
     async def browser_search_handler(query: str) -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
         return await hermes_browser.search_google("default", query)
 
     async def browser_navigate_handler(url: str) -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
         return await hermes_browser.navigate("default", url)
 
     async def browser_click_handler(ref: str) -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
         return await hermes_browser.click("default", ref)
 
     async def browser_type_handler(text: str, ref: str = "input") -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
         return await hermes_browser.type_text("default", ref, text)
 
     async def browser_screenshot_handler() -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
         return await hermes_browser.screenshot("default")
 
     async def browser_scroll_handler(direction: str = "down") -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
         return await hermes_browser.scroll("default", direction)
 
     async def browser_snapshot_handler() -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
         return await hermes_browser.get_snapshot("default")
 
     async def browser_back_handler() -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
         return await hermes_browser.go_back("default")
 
     async def browser_forward_handler() -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
         return await hermes_browser.go_forward("default")
 
     async def browser_start_handler() -> dict:
         session = await hermes_browser.create_session("default")
-        return {"status": "success", "session_id": session.session_id}
+        return {"status": "success", "session_id": session.session_id, "message": "Browser started"}
 
     async def browser_stop_handler() -> dict:
         await hermes_browser.destroy_session("default")
-        return {"status": "success"}
+        return {"status": "success", "message": "Browser stopped"}
 
     command_registry.register_handler("browser_search", browser_search_handler)
     command_registry.register_handler("browser_navigate", browser_navigate_handler)

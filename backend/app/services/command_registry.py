@@ -285,7 +285,7 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
-            patterns=[r"(?:open|go to|visit|navigate to) (?:https?://)?(.+)"],
+            patterns=[r"open (?:the )?(?:website |site )?(.+)", r"go to (?:the )?(?:website |site )?(.+)", r"visit (?:the )?(?:website |site )?(.+)", r"navigate to (.+)"],
             handler="browser_navigate",
             description="Navigate to a website",
             category="browser",
@@ -293,7 +293,7 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
-            patterns=[r"click (.+)", r"press (.+)"],
+            patterns=[r"click (?:the )?(.+)", r"press (?:the )?(.+)"],
             handler="browser_click",
             description="Click an element on the page",
             category="browser",
@@ -301,7 +301,7 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
-            patterns=[r"type (.+) in (.+)", r"enter (.+) in (.+)", r"input (.+) into (.+)"],
+            patterns=[r"type (.+) in (?:the )?(.+)", r"enter (.+) in (?:the )?(.+)", r"input (.+) into (?:the )?(.+)"],
             handler="browser_type",
             description="Type text into a form field",
             category="browser",
@@ -309,7 +309,7 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
-            patterns=[r"take (?:a )?screenshot", r"capture (?:the )?page", r"snapshot"],
+            patterns=[r"take (?:a )?screenshot", r"capture (?:the )?page"],
             handler="browser_screenshot",
             description="Take a screenshot of the current page",
             category="browser",
@@ -325,7 +325,7 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
-            patterns=[r"what(?:'s| is) (?:on )?(?:the )?page", r"read (?:the )?page", r"what do you see (?:on )?(?:the )?page"],
+            patterns=[r"what(?:'s| is) (?:on )?(?:the )?page", r"read (?:the )?page", r"what do you see"],
             handler="browser_snapshot",
             description="Get the accessibility tree of the current page",
             category="browser",
@@ -333,35 +333,35 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
-            patterns=[r"go back", r"(?:navigate )?back"],
+            patterns=[r"browser go back", r"browser back", r"navigate browser back"],
             handler="browser_back",
-            description="Go back to the previous page",
+            description="Go back to the previous page in browser",
             category="browser",
-            examples=["Go back", "Navigate back"],
+            examples=["Browser go back", "Browser back"],
         ))
 
         self.register(CommandPattern(
-            patterns=[r"go forward", r"(?:navigate )?forward"],
+            patterns=[r"browser go forward", r"browser forward", r"navigate browser forward"],
             handler="browser_forward",
-            description="Go forward to the next page",
+            description="Go forward to the next page in browser",
             category="browser",
-            examples=["Go forward", "Navigate forward"],
+            examples=["Browser go forward", "Browser forward"],
         ))
 
         self.register(CommandPattern(
-            patterns=[r"start (?:a )?browser", r"open browser", r"launch browser"],
+            patterns=[r"start (?:a )?browser", r"open (?:the )?browser", r"launch (?:the )?browser"],
             handler="browser_start",
             description="Start a browser session",
             category="browser",
-            examples=["Start a browser", "Open browser"],
+            examples=["Start a browser", "Open the browser"],
         ))
 
         self.register(CommandPattern(
-            patterns=[r"stop (?:the )?browser", r"close browser", r"quit browser"],
+            patterns=[r"stop (?:the )?browser", r"close (?:the )?browser", r"quit (?:the )?browser"],
             handler="browser_stop",
             description="Stop the browser session",
             category="browser",
-            examples=["Stop the browser", "Close browser"],
+            examples=["Stop the browser", "Close the browser"],
         ))
 
         self.register(CommandPattern(
@@ -891,6 +891,8 @@ Examples:
 - "what's on the page" -> {{"handler": "browser_snapshot", "params": []}}
 - "start a browser" -> {{"handler": "browser_start", "params": []}}
 - "stop the browser" -> {{"handler": "browser_stop", "params": []}}
+- "browser go back" -> {{"handler": "browser_back", "params": []}}
+- "browser go forward" -> {{"handler": "browser_forward", "params": []}}
 
 Return ONLY valid JSON, no explanation."""
 
