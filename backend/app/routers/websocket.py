@@ -11,10 +11,36 @@ from app.services.command_registry import command_registry
 from app.services.vision_service import vision_service
 from app.services.system_command_service import system_command_service
 from app.services.hermes_browser import hermes_browser
+from app.services.personality_service import personality_service
 
 router = APIRouter()
 
 connected_clients: list[WebSocket] = []
+
+
+def _build_system_prompt(extra_instructions: str = "", user_message: str = "") -> str:
+    """Build system prompt with browser state and RAG context."""
+    base_prompt = personality_service.get_system_prompt()
+    browser_state = hermes_browser.get_browser_state_for_llm()
+    
+    prompt = f"You are JARVIS.\n{base_prompt}"
+    
+    if browser_state and "No active" not in browser_state:
+        prompt += f"\n\nCurrent browser state:\n{browser_state}"
+    
+    if user_message:
+        try:
+            from app.services.rag_service import rag_service
+            rag_context = rag_service.get_context_for_llm(user_message, top_k=3)
+            if rag_context:
+                prompt += f"\n\n{rag_context}"
+        except Exception:
+            pass
+    
+    if extra_instructions:
+        prompt += f"\n{extra_instructions}"
+    
+    return prompt
 
 
 def _register_system_handlers():
@@ -24,24 +50,42 @@ def _register_system_handlers():
     command_registry.register_handler("open_browser", scs.open_browser)
 
     async def browser_open_youtube(query: str = "") -> dict:
+        print(f"[YOUTUBE] Opening YouTube with query: '{query}'")
         if not await _ensure_browser_session():
+            print("[YOUTUBE] Browser session not available")
             return {"status": "error", "message": "Could not start browser"}
         query = query.strip()
         if query:
             url = f"https://www.youtube.com/results?search_query={quote(query)}"
         else:
             url = "https://www.youtube.com"
-        return await hermes_browser.navigate("default", url)
+        result = await hermes_browser.navigate("default", url)
+        if result["status"] == "success" and query:
+            video_result = await hermes_browser.click_first_youtube_video("default")
+            if video_result["status"] == "success":
+                result["message"] = f"Playing {query} on YouTube"
+                result["playing"] = True
+        print(f"[YOUTUBE] Result: {result}")
+        return result
 
     async def browser_play_youtube(query: str = "") -> dict:
+        print(f"[YOUTUBE] Playing on YouTube with query: '{query}'")
         if not await _ensure_browser_session():
+            print("[YOUTUBE] Browser session not available")
             return {"status": "error", "message": "Could not start browser"}
         query = query.strip()
         if query:
             url = f"https://www.youtube.com/results?search_query={quote(query)}"
         else:
             url = "https://music.youtube.com"
-        return await hermes_browser.navigate("default", url)
+        result = await hermes_browser.navigate("default", url)
+        if result["status"] == "success" and query:
+            video_result = await hermes_browser.click_first_youtube_video("default")
+            if video_result["status"] == "success":
+                result["message"] = f"Playing {query} on YouTube Music"
+                result["playing"] = True
+        print(f"[YOUTUBE] Result: {result}")
+        return result
 
     command_registry.register_handler("open_youtube", browser_open_youtube)
     command_registry.register_handler("play_youtube", browser_play_youtube)
@@ -83,15 +127,67 @@ def _register_system_handlers():
     command_registry.register_handler("knowledge_summary", lambda: knowledge_service.get_stats())
     command_registry.register_handler("knowledge_search", knowledge_service.search)
 
+    from app.services.rag_service import rag_service
+    from app.services.ocr_service import ocr_service
+
+    async def rag_ingest_handler(text_or_file: str = "") -> dict:
+        text_or_file = text_or_file.strip()
+        if not text_or_file:
+            return {"status": "error", "message": "Provide text to learn or a file path"}
+        path = Path(text_or_file)
+        if path.exists() and path.is_file():
+            return await asyncio.to_thread(rag_service.ingest_file, str(path))
+        count = await asyncio.to_thread(rag_service.ingest_text, text_or_file, "voice_input")
+        return {"status": "success", "chunks_added": count, "message": f"Learned from text ({count} chunks)"}
+
+    async def rag_search_handler(query: str = "") -> dict:
+        if not query.strip():
+            return {"status": "error", "message": "Provide a search query"}
+        results = await asyncio.to_thread(rag_service.search, query.strip(), 5, 0.3)
+        if not results:
+            return {"status": "success", "results": [], "message": "No relevant knowledge found"}
+        return {"status": "success", "results": results, "message": f"Found {len(results)} relevant results"}
+
+    async def rag_status_handler() -> dict:
+        return await asyncio.to_thread(rag_service.get_stats)
+
+    async def rag_clear_handler() -> dict:
+        count = await asyncio.to_thread(rag_service.clear_all)
+        return {"status": "success", "cleared": count, "message": f"Cleared {count} chunks from knowledge base"}
+
+    async def ocr_screenshot_handler(prompt: str = "") -> dict:
+        return await ocr_service.ocr_screenshot(prompt=prompt if prompt else None)
+
+    async def ocr_file_handler(file_path: str = "") -> dict:
+        file_path = file_path.strip()
+        if not file_path:
+            return {"status": "error", "message": "Provide a file path"}
+        return await ocr_service.ocr_from_file(file_path)
+
+    command_registry.register_handler("rag_ingest", rag_ingest_handler)
+    command_registry.register_handler("rag_search", rag_search_handler)
+    command_registry.register_handler("rag_status", rag_status_handler)
+    command_registry.register_handler("rag_clear", rag_clear_handler)
+    command_registry.register_handler("ocr_screenshot", ocr_screenshot_handler)
+    command_registry.register_handler("ocr_file", ocr_file_handler)
+
     async def _ensure_browser_session() -> bool:
         session = hermes_browser.get_session("default")
-        if not session:
+        if session:
+            return True
+        
+        # Try to create session with retries
+        max_retries = 3
+        for attempt in range(max_retries):
             try:
                 await hermes_browser.create_session("default")
                 return True
-            except Exception:
-                return False
-        return True
+            except Exception as e:
+                print(f"[BROWSER] Session creation attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+        
+        return False
 
     async def browser_search_handler(query: str) -> dict:
         if not await _ensure_browser_session():
@@ -146,6 +242,32 @@ def _register_system_handlers():
         await hermes_browser.destroy_session("default")
         return {"status": "success", "message": "Browser stopped"}
 
+    async def browser_new_tab_handler() -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
+        return await hermes_browser.new_tab("default")
+
+    async def browser_switch_tab_handler(tab_index: int = 0) -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
+        return await hermes_browser.switch_tab("default", tab_index)
+
+    async def browser_close_tab_handler(tab_index: str = "") -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
+        idx = int(tab_index) if tab_index and tab_index.isdigit() else None
+        return await hermes_browser.close_tab("default", idx)
+
+    async def browser_get_tabs_handler() -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
+        return await hermes_browser.get_all_tabs_info("default")
+
+    async def browser_page_summary_handler() -> dict:
+        if not await _ensure_browser_session():
+            return {"status": "error", "message": "Could not start browser"}
+        return await hermes_browser.get_page_summary("default")
+
     command_registry.register_handler("browser_search", browser_search_handler)
     command_registry.register_handler("browser_navigate", browser_navigate_handler)
     command_registry.register_handler("browser_click", browser_click_handler)
@@ -157,6 +279,11 @@ def _register_system_handlers():
     command_registry.register_handler("browser_forward", browser_forward_handler)
     command_registry.register_handler("browser_start", browser_start_handler)
     command_registry.register_handler("browser_stop", browser_stop_handler)
+    command_registry.register_handler("browser_new_tab", browser_new_tab_handler)
+    command_registry.register_handler("browser_switch_tab", browser_switch_tab_handler)
+    command_registry.register_handler("browser_close_tab", browser_close_tab_handler)
+    command_registry.register_handler("browser_get_tabs", browser_get_tabs_handler)
+    command_registry.register_handler("browser_page_summary", browser_page_summary_handler)
 
 
 _register_system_handlers()
@@ -200,6 +327,17 @@ COMMAND_RESPONSES = {
     "browser_snapshot": "Getting page content.",
     "browser_back": "Going back.",
     "browser_forward": "Going forward.",
+    "browser_new_tab": "Opening a new tab.",
+    "browser_switch_tab": "Switching tabs.",
+    "browser_close_tab": "Closing that tab.",
+    "browser_get_tabs": "Here are your open tabs.",
+    "browser_page_summary": "Let me describe the page.",
+    "rag_ingest": "Learning from that.",
+    "rag_search": "Searching my knowledge.",
+    "rag_status": "Here's my knowledge status.",
+    "rag_clear": "Knowledge cleared.",
+    "ocr_screenshot": "Reading the screen.",
+    "ocr_file": "Reading that image.",
     "remember": "I'll remember that.",
     "recall": "Let me check my memory.",
     "forget": "Done, I've forgotten that.",
@@ -225,6 +363,14 @@ async def _heartbeat_loop():
                 connected_clients.remove(client)
             except ValueError:
                 pass
+
+
+async def safe_send(ws: WebSocket, message: dict) -> bool:
+    try:
+        await ws.send_json(message)
+        return True
+    except Exception:
+        return False
 
 
 async def broadcast(message: dict, exclude: WebSocket = None):
@@ -274,7 +420,7 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == "text_message":
                 asyncio.create_task(handle_text_message(websocket, message))
             elif msg_type == "ping":
-                await websocket.send_json({"type": "pong"})
+                await safe_send(websocket,{"type": "pong"})
             elif msg_type == "device_register":
                 await handle_device_register(websocket, message, client_id)
             elif msg_type == "device_heartbeat":
@@ -337,6 +483,26 @@ async def websocket_endpoint(websocket: WebSocket):
                 await handle_browser_scroll(websocket, message)
             elif msg_type == "browser_search":
                 await handle_browser_search(websocket, message)
+            elif msg_type == "browser_get_state":
+                await handle_browser_get_state(websocket, message)
+            elif msg_type == "browser_new_tab":
+                await handle_browser_new_tab(websocket, message)
+            elif msg_type == "browser_switch_tab":
+                await handle_browser_switch_tab(websocket, message)
+            elif msg_type == "browser_close_tab":
+                await handle_browser_close_tab(websocket, message)
+            elif msg_type == "browser_page_summary":
+                await handle_browser_page_summary(websocket, message)
+            elif msg_type == "rag_ingest":
+                await handle_rag_ingest(websocket, message)
+            elif msg_type == "rag_search":
+                await handle_rag_search(websocket, message)
+            elif msg_type == "rag_status":
+                await handle_rag_status(websocket)
+            elif msg_type == "ocr_image":
+                await handle_ocr_image(websocket, message)
+            elif msg_type == "ocr_screenshot":
+                await handle_ocr_screenshot(websocket, message)
             elif msg_type == "farewell":
                 await handle_farewell(websocket)
             elif msg_type == "greeting":
@@ -369,7 +535,6 @@ async def websocket_endpoint(websocket: WebSocket):
 async def send_greeting(websocket: WebSocket):
     from app.services.voice_service import voice_service
     from app.services.voice_profile_service import voice_profile_service
-    from app.services.personality_service import personality_service
 
     try:
         if not personality_service.introduced:
@@ -388,12 +553,12 @@ async def send_greeting(websocket: WebSocket):
                 pitch=profile.pitch,
             )
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "avatar_state",
                 "state": "speaking"
             })
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "voice_response",
                 "response": intro_text,
                 "audio": base64.b64encode(tts_audio).decode(),
@@ -401,7 +566,7 @@ async def send_greeting(websocket: WebSocket):
                 "is_introduction": True,
             })
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "avatar_state",
                 "state": "idle"
             })
@@ -426,12 +591,12 @@ async def send_greeting(websocket: WebSocket):
             pitch=profile.pitch,
         )
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "avatar_state",
             "state": "speaking"
         })
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "voice_response",
             "response": greeting_text,
             "audio": base64.b64encode(tts_audio).decode(),
@@ -439,7 +604,7 @@ async def send_greeting(websocket: WebSocket):
             "is_greeting": True,
         })
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "avatar_state",
             "state": "idle"
         })
@@ -450,7 +615,6 @@ async def send_greeting(websocket: WebSocket):
 async def handle_farewell(websocket: WebSocket):
     from app.services.voice_service import voice_service
     from app.services.voice_profile_service import voice_profile_service
-    from app.services.personality_service import personality_service
 
     try:
         hour = datetime.now().hour
@@ -472,12 +636,12 @@ async def handle_farewell(websocket: WebSocket):
             pitch=profile.pitch,
         )
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "avatar_state",
             "state": "speaking"
         })
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "voice_response",
             "response": farewell_text,
             "audio": base64.b64encode(tts_audio).decode(),
@@ -485,7 +649,7 @@ async def handle_farewell(websocket: WebSocket):
             "is_farewell": True,
         })
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "avatar_state",
             "state": "idle"
         })
@@ -497,7 +661,7 @@ async def handle_device_register(websocket: WebSocket, message: dict, client_id:
     device_id = message.get("device_id", "unknown")
     client_devices[client_id] = device_id
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "device_registered",
         "device_id": device_id,
         "server_time": datetime.now(timezone.utc).isoformat(),
@@ -515,7 +679,7 @@ async def handle_device_register(websocket: WebSocket, message: dict, client_id:
 async def handle_device_heartbeat(websocket: WebSocket, message: dict):
     device_id = message.get("device_id", "unknown")
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "heartbeat_ack",
         "device_id": device_id,
         "server_time": datetime.now(timezone.utc).isoformat(),
@@ -542,7 +706,6 @@ async def handle_device_status_update(websocket: WebSocket, message: dict):
 
 async def handle_voice_chunk(websocket: WebSocket, message: dict):
     from app.services.voice_profile_service import voice_profile_service
-    from app.services.personality_service import personality_service
 
     try:
         if id(websocket) in introduction_pending:
@@ -566,8 +729,8 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                 response_text = "No problem! I will call you Boss. How may I assist you today?"
             profile = voice_profile_service.get_active_profile()
             tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice, rate=profile.rate, pitch=profile.pitch)
-            await websocket.send_json({"type": "avatar_state", "state": "speaking"})
-            await websocket.send_json({
+            await safe_send(websocket,{"type": "avatar_state", "state": "speaking"})
+            await safe_send(websocket,{
                 "type": "voice_response",
                 "transcription": stt_result["text"],
                 "response": response_text,
@@ -575,7 +738,7 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                 "model": "introduction",
                 "is_introduction": True,
             })
-            await websocket.send_json({"type": "avatar_state", "state": "idle"})
+            await safe_send(websocket,{"type": "avatar_state", "state": "idle"})
             return
 
         audio_b64 = message.get("audio")
@@ -584,7 +747,7 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
 
         audio_data = base64.b64decode(audio_b64)
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "avatar_state",
             "state": "thinking"
         })
@@ -593,7 +756,7 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
         transcription = stt_result["text"]
 
         if not transcription.strip():
-            await websocket.send_json({"type": "avatar_state", "state": "idle"})
+            await safe_send(websocket,{"type": "avatar_state", "state": "idle"})
             return
 
         command_result = command_registry.parse_command(transcription)
@@ -608,12 +771,12 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                     pitch=profile.pitch,
                 )
 
-                await websocket.send_json({
+                await safe_send(websocket,{
                     "type": "avatar_state",
                     "state": "speaking"
                 })
 
-                await websocket.send_json({
+                await safe_send(websocket,{
                     "type": "voice_response",
                     "transcription": transcription,
                     "response": farewell_text,
@@ -639,19 +802,19 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
 
                 execution, tts_audio = await asyncio.gather(execution_task, tts_task)
 
-                await websocket.send_json({
+                await safe_send(websocket,{
                     "type": "command_response",
                     "transcription": transcription,
                     "command": command_result,
                     "result": execution,
                 })
 
-                await websocket.send_json({
+                await safe_send(websocket,{
                     "type": "avatar_state",
                     "state": "speaking"
                 })
 
-                await websocket.send_json({
+                await safe_send(websocket,{
                     "type": "voice_response",
                     "transcription": transcription,
                     "confidence": stt_result["confidence"],
@@ -661,7 +824,7 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                     "is_command": True,
                 })
 
-                await websocket.send_json({
+                await safe_send(websocket,{
                     "type": "avatar_state",
                     "state": "idle"
                 })
@@ -676,7 +839,7 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
             try:
                 llm_response = await voice_service.chat_completion(
                     message=f"The user said: \"{transcription}\"\nCommand result: {result_message}\n\nRespond with a short natural sentence (1-2 lines) about what was done.",
-                    system_prompt=f"You are JARVIS. {personality_service.get_system_prompt()}\nKeep responses under 2 sentences.",
+                    system_prompt=_build_system_prompt("Keep responses under 2 sentences.", transcription),
                 )
                 response_text = llm_response["response"]
             except:
@@ -684,19 +847,19 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
 
             tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice)
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "command_response",
                 "transcription": transcription,
                 "command": command_result,
                 "result": execution,
             })
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "avatar_state",
                 "state": "speaking"
             })
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "voice_response",
                 "transcription": transcription,
                 "confidence": stt_result["confidence"],
@@ -706,7 +869,7 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                 "is_command": True,
             })
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "avatar_state",
                 "state": "idle"
             })
@@ -731,7 +894,7 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                         try:
                             llm_response = await voice_service.chat_completion(
                                 message=f"The user said: \"{transcription}\"\nCommand executed: {handler_name}\nResult: {result_message}\n\nGenerate a brief natural response. One sentence max.",
-                                system_prompt=f"You are JARVIS. {personality_service.get_system_prompt()}\nRespond naturally in 1 sentence.",
+                                system_prompt=_build_system_prompt("Respond naturally in 1 sentence.", transcription),
                             )
                             response_text = llm_response["response"]
                         except:
@@ -739,19 +902,19 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
 
                     tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice)
 
-                    await websocket.send_json({
+                    await safe_send(websocket,{
                         "type": "command_response",
                         "transcription": transcription,
                         "command": {"handler": handler_name, "params": params},
                         "result": execution_result,
                     })
 
-                    await websocket.send_json({
+                    await safe_send(websocket,{
                         "type": "avatar_state",
                         "state": "speaking"
                     })
 
-                    await websocket.send_json({
+                    await safe_send(websocket,{
                         "type": "voice_response",
                         "transcription": transcription,
                         "confidence": stt_result["confidence"],
@@ -761,7 +924,7 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                         "is_command": True,
                     })
 
-                    await websocket.send_json({
+                    await safe_send(websocket,{
                         "type": "avatar_state",
                         "state": "idle"
                     })
@@ -774,12 +937,12 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
             system_prompt=message.get("system_prompt"),
         )
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "avatar_state",
             "state": "speaking"
         })
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "voice_response",
             "transcription": transcription,
             "confidence": result["confidence"],
@@ -788,7 +951,7 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
             "model": result["model"]
         })
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "avatar_state",
             "state": "idle"
         })
@@ -803,29 +966,29 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
             profile = _vps.get_active_profile()
             tts_audio = await voice_service.text_to_speech(error_text, voice=profile.voice)
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "avatar_state",
                 "state": "speaking"
             })
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "voice_response",
                 "response": error_text,
                 "audio": base64.b64encode(tts_audio).decode(),
                 "model": "error",
             })
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "avatar_state",
                 "state": "idle"
             })
         except:
             try:
-                await websocket.send_json({
+                await safe_send(websocket,{
                     "type": "error",
                     "message": f"Something went wrong: {type(e).__name__}: {e}"
                 })
-                await websocket.send_json({
+                await safe_send(websocket,{
                     "type": "avatar_state",
                     "state": "error"
                 })
@@ -834,10 +997,9 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
 
 
 async def handle_text_message(websocket: WebSocket, message: dict):
-    from app.services.personality_service import personality_service
     from app.services.voice_profile_service import voice_profile_service
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "avatar_state",
         "state": "thinking"
     })
@@ -859,8 +1021,8 @@ async def handle_text_message(websocket: WebSocket, message: dict):
                 response_text = "No problem! I will call you Boss. How may I assist you today?"
             profile = voice_profile_service.get_active_profile()
             tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice, rate=profile.rate, pitch=profile.pitch)
-            await websocket.send_json({"type": "avatar_state", "state": "speaking"})
-            await websocket.send_json({
+            await safe_send(websocket,{"type": "avatar_state", "state": "speaking"})
+            await safe_send(websocket,{
                 "type": "voice_response",
                 "transcription": text,
                 "response": response_text,
@@ -868,7 +1030,7 @@ async def handle_text_message(websocket: WebSocket, message: dict):
                 "model": "introduction",
                 "is_introduction": True,
             })
-            await websocket.send_json({"type": "avatar_state", "state": "idle"})
+            await safe_send(websocket,{"type": "avatar_state", "state": "idle"})
             return
 
         text = message.get("text", "")
@@ -885,12 +1047,12 @@ async def handle_text_message(websocket: WebSocket, message: dict):
                     pitch=profile.pitch,
                 )
 
-                await websocket.send_json({
+                await safe_send(websocket,{
                     "type": "avatar_state",
                     "state": "speaking"
                 })
 
-                await websocket.send_json({
+                await safe_send(websocket,{
                     "type": "voice_response",
                     "transcription": text,
                     "response": farewell_text,
@@ -919,7 +1081,7 @@ async def handle_text_message(websocket: WebSocket, message: dict):
             try:
                 llm_response = await voice_service.chat_completion(
                     message=f"The user said: \"{text}\"\nCommand result: {result_message}{extra_info}\n\nRespond with a short natural sentence (1-2 lines) about what was done. Be helpful and conversational.",
-                    system_prompt=f"You are JARVIS. {personality_service.get_system_prompt()}\nKeep responses under 2 sentences.",
+                    system_prompt=_build_system_prompt("Keep responses under 2 sentences.", text),
                 )
                 response_text = llm_response["response"]
             except:
@@ -927,19 +1089,19 @@ async def handle_text_message(websocket: WebSocket, message: dict):
 
             tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice)
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "command_response",
                 "text": text,
                 "command": command_result,
                 "result": execution,
             })
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "avatar_state",
                 "state": "speaking"
             })
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "voice_response",
                 "transcription": text,
                 "response": response_text,
@@ -948,7 +1110,7 @@ async def handle_text_message(websocket: WebSocket, message: dict):
                 "is_command": True,
             })
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "avatar_state",
                 "state": "idle"
             })
@@ -977,7 +1139,7 @@ async def handle_text_message(websocket: WebSocket, message: dict):
                     try:
                         llm_response = await voice_service.chat_completion(
                             message=f"The user said: \"{text}\"\nCommand executed: {llm_result.get('handler', 'unknown')}\nResult: {result_message}{extra_info}\n\nGenerate a brief natural response about what just happened. Never say 'Command executed' or 'Done'. Say something a human assistant would say, like 'I've opened Brave for you' or 'Here are your folders' or 'Muted your PC'. One sentence max.",
-                            system_prompt=f"You are JARVIS, a sophisticated AI assistant. {personality_service.get_system_prompt()}\nYou just executed a system command for the user. Respond naturally in 1 sentence. Never use robotic phrases like 'command executed' or 'task completed'.",
+                            system_prompt=_build_system_prompt("You just executed a system command for the user. Respond naturally in 1 sentence. Never use robotic phrases like 'command executed' or 'task completed'.", text),
                         )
                         response_text = llm_response["response"]
                     except:
@@ -985,19 +1147,19 @@ async def handle_text_message(websocket: WebSocket, message: dict):
 
                     tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice)
 
-                    await websocket.send_json({
+                    await safe_send(websocket,{
                         "type": "command_response",
                         "text": text,
                         "command": {"handler": llm_result["handler"], "params": params},
                         "result": execution_result,
                     })
 
-                    await websocket.send_json({
+                    await safe_send(websocket,{
                         "type": "avatar_state",
                         "state": "speaking"
                     })
 
-                    await websocket.send_json({
+                    await safe_send(websocket,{
                         "type": "voice_response",
                         "transcription": text,
                         "response": response_text,
@@ -1006,7 +1168,7 @@ async def handle_text_message(websocket: WebSocket, message: dict):
                         "is_command": True,
                     })
 
-                    await websocket.send_json({
+                    await safe_send(websocket,{
                         "type": "avatar_state",
                         "state": "idle"
                     })
@@ -1016,7 +1178,7 @@ async def handle_text_message(websocket: WebSocket, message: dict):
 
         result = await voice_service.chat_completion(
             message=text,
-            system_prompt=personality_service.get_system_prompt(),
+            system_prompt=_build_system_prompt(user_message=text),
             conversation_history=message.get("conversation_history")
         )
 
@@ -1028,12 +1190,12 @@ async def handle_text_message(websocket: WebSocket, message: dict):
             pitch=profile.pitch,
         )
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "avatar_state",
             "state": "speaking"
         })
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "voice_response",
             "transcription": text,
             "response": result["response"],
@@ -1041,7 +1203,7 @@ async def handle_text_message(websocket: WebSocket, message: dict):
             "model": result["model"],
         })
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "avatar_state",
             "state": "idle"
         })
@@ -1052,28 +1214,28 @@ async def handle_text_message(websocket: WebSocket, message: dict):
             profile = voice_profile_service.get_active_profile()
             tts_audio = await voice_service.text_to_speech(error_text, voice=profile.voice)
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "avatar_state",
                 "state": "speaking"
             })
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "voice_response",
                 "response": error_text,
                 "audio": base64.b64encode(tts_audio).decode(),
                 "model": "error",
             })
 
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "avatar_state",
                 "state": "idle"
             })
         except:
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "error",
                 "message": str(e)
             })
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "avatar_state",
                 "state": "error"
             })
@@ -1090,7 +1252,7 @@ async def handle_screen_start(websocket: WebSocket, message: dict):
         height=message.get("height", 1280),
     )
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "screen_started",
         "session_id": session.id,
         "device_id": device_id,
@@ -1121,7 +1283,7 @@ async def handle_screen_stop(websocket: WebSocket, message: dict):
 
     if session_id:
         screen_share_service.stop_session(session_id)
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "screen_stopped",
             "session_id": session_id,
         })
@@ -1156,7 +1318,7 @@ async def handle_screen_frame(websocket: WebSocket, message: dict):
 async def handle_screen_view(websocket: WebSocket, message: dict, client_id: int):
     session_id = message.get("session_id")
     if not session_id:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "session_id required",
         })
@@ -1164,7 +1326,7 @@ async def handle_screen_view(websocket: WebSocket, message: dict, client_id: int
 
     session = screen_share_service.get_session(session_id)
     if not session:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "Session not found",
         })
@@ -1173,7 +1335,7 @@ async def handle_screen_view(websocket: WebSocket, message: dict, client_id: int
     viewer_count = screen_share_service.add_viewer(session_id, str(client_id))
     client_viewer_sessions[client_id] = session_id
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "screen_viewing",
         "session_id": session_id,
         "device_id": session.device_id,
@@ -1203,7 +1365,7 @@ async def handle_screen_unview(websocket: WebSocket, message: dict, client_id: i
     session_id = client_viewer_sessions.pop(client_id, None)
     if session_id:
         viewer_count = screen_share_service.remove_viewer(session_id, str(client_id))
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "screen_unviewing",
             "session_id": session_id,
             "viewer_count": viewer_count,
@@ -1216,7 +1378,7 @@ async def handle_screen_analyze(websocket: WebSocket, message: dict):
     frame_data = message.get("frame")
 
     if not frame_data:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "screen_analysis",
             "session_id": session_id,
             "status": "error",
@@ -1231,7 +1393,7 @@ async def handle_screen_analyze(websocket: WebSocket, message: dict):
             system_prompt="You are J.A.R.V.I.S. analyzing a screen capture. Describe what you see.",
         )
 
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "screen_analysis",
             "session_id": session_id,
             "status": "complete",
@@ -1239,7 +1401,7 @@ async def handle_screen_analyze(websocket: WebSocket, message: dict):
             "model": result["model"],
         })
     except Exception as e:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "screen_analysis",
             "session_id": session_id,
             "status": "error",
@@ -1250,7 +1412,7 @@ async def handle_screen_analyze(websocket: WebSocket, message: dict):
 async def handle_camera_view(websocket: WebSocket, message: dict, client_id: int):
     camera_id = message.get("camera_id")
     if not camera_id:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "camera_id required",
         })
@@ -1258,7 +1420,7 @@ async def handle_camera_view(websocket: WebSocket, message: dict, client_id: int
 
     session = rtsp_service.get_camera(camera_id)
     if not session:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "Camera not found",
         })
@@ -1267,7 +1429,7 @@ async def handle_camera_view(websocket: WebSocket, message: dict, client_id: int
     viewer_count = rtsp_service.add_viewer(camera_id, str(client_id))
     client_camera_viewers[client_id] = camera_id
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "camera_viewing",
         "camera_id": camera_id,
         "name": session.config.name,
@@ -1280,7 +1442,7 @@ async def handle_camera_unview(websocket: WebSocket, message: dict, client_id: i
     camera_id = client_camera_viewers.pop(client_id, None)
     if camera_id:
         viewer_count = rtsp_service.remove_viewer(camera_id, str(client_id))
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "camera_unviewing",
             "camera_id": camera_id,
             "viewer_count": viewer_count,
@@ -1290,7 +1452,7 @@ async def handle_camera_unview(websocket: WebSocket, message: dict, client_id: i
 async def handle_camera_frame_request(websocket: WebSocket, message: dict):
     camera_id = message.get("camera_id")
     if not camera_id:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "camera_id required",
         })
@@ -1298,7 +1460,7 @@ async def handle_camera_frame_request(websocket: WebSocket, message: dict):
 
     frame = await rtsp_service.capture_frame(camera_id)
     if not frame:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "camera_frame",
             "camera_id": camera_id,
             "status": "error",
@@ -1306,7 +1468,7 @@ async def handle_camera_frame_request(websocket: WebSocket, message: dict):
         })
         return
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "camera_frame",
         "camera_id": camera_id,
         "frame": frame,
@@ -1320,7 +1482,7 @@ async def handle_wearable_subscribe(websocket: WebSocket, message: dict, client_
 
     wearable_service.subscribe(str(client_id), metrics)
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "wearable_subscribed",
         "device_id": device_id,
         "metrics": metrics,
@@ -1330,7 +1492,7 @@ async def handle_wearable_subscribe(websocket: WebSocket, message: dict, client_
 async def handle_wearable_unsubscribe(websocket: WebSocket, message: dict, client_id: int):
     wearable_service.unsubscribe(str(client_id))
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "wearable_unsubscribed",
     })
 
@@ -1368,13 +1530,13 @@ async def handle_vision_analyze(websocket: WebSocket, message: dict):
     context = message.get("context")
 
     if not camera_id:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "camera_id required",
         })
         return
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "avatar_state",
         "state": "thinking"
     })
@@ -1385,13 +1547,13 @@ async def handle_vision_analyze(websocket: WebSocket, message: dict):
         context=context,
     )
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "vision_result",
         "camera_id": camera_id,
         "result": result,
     })
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "avatar_state",
         "state": "idle"
     })
@@ -1400,45 +1562,45 @@ async def handle_vision_analyze(websocket: WebSocket, message: dict):
 async def handle_vision_quick_look(websocket: WebSocket, message: dict):
     camera_id = message.get("camera_id")
     if not camera_id:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "camera_id required",
         })
         return
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "avatar_state",
         "state": "thinking"
     })
 
     result = await vision_service.quick_look(camera_id)
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "vision_result",
         "camera_id": camera_id,
         "result": result,
     })
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "avatar_state",
         "state": "idle"
     })
 
 
 async def handle_vision_scan_all(websocket: WebSocket):
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "avatar_state",
         "state": "thinking"
     })
 
     results = await vision_service.scan_all_cameras()
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "vision_scan_result",
         "results": results,
     })
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "avatar_state",
         "state": "idle"
     })
@@ -1453,7 +1615,7 @@ async def handle_vision_observe_start(websocket: WebSocket, message: dict):
     interval = message.get("interval", 10.0)
 
     if not camera_ids:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "camera_ids required",
         })
@@ -1495,7 +1657,7 @@ async def handle_vision_observe_start(websocket: WebSocket, message: dict):
         })
     ))
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "vision_observe_started",
         "session_id": session_id,
         "result": result,
@@ -1505,7 +1667,7 @@ async def handle_vision_observe_start(websocket: WebSocket, message: dict):
 async def handle_vision_observe_stop(websocket: WebSocket, message: dict):
     session_id = message.get("session_id")
     if not session_id:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "session_id required",
         })
@@ -1513,7 +1675,7 @@ async def handle_vision_observe_stop(websocket: WebSocket, message: dict):
 
     result = await vision_service.stop_observation(session_id)
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "vision_observe_stopped",
         "session_id": session_id,
         "result": result,
@@ -1525,22 +1687,20 @@ async def handle_voice_profile_switch(websocket: WebSocket, message: dict):
 
     profile_id = message.get("profile_id")
     if not profile_id:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "profile_id required",
         })
         return
 
     result = voice_profile_service.set_active(profile_id)
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "voice_profile_changed",
         "result": result,
     })
 
 
 async def handle_personality_update(websocket: WebSocket, message: dict):
-    from app.services.personality_service import personality_service
-
     update_type = message.get("update_type")
 
     if update_type == "style":
@@ -1567,7 +1727,7 @@ async def handle_personality_update(websocket: WebSocket, message: dict):
     else:
         result = {"status": "error", "message": f"Unknown update type: {update_type}"}
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "personality_updated",
         "result": result,
     })
@@ -1584,7 +1744,7 @@ async def handle_browser_create_session(websocket: WebSocket, message: dict):
         viewport_height=viewport_height,
     )
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "browser_session_created",
         "session_id": session.session_id,
         "created_at": session.created_at,
@@ -1596,7 +1756,7 @@ async def handle_browser_destroy_session(websocket: WebSocket, message: dict):
     if session_id:
         await hermes_browser.destroy_session(session_id)
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "browser_session_destroyed",
         "session_id": session_id,
     })
@@ -1607,13 +1767,13 @@ async def handle_browser_navigate(websocket: WebSocket, message: dict):
     url = message.get("url")
 
     if not url:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "url required",
         })
         return
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "browser_navigating",
         "session_id": session_id,
         "url": url,
@@ -1621,7 +1781,7 @@ async def handle_browser_navigate(websocket: WebSocket, message: dict):
 
     result = await hermes_browser.navigate(session_id, url)
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "browser_navigate_result",
         "session_id": session_id,
         "result": result,
@@ -1630,7 +1790,7 @@ async def handle_browser_navigate(websocket: WebSocket, message: dict):
     if result["status"] == "success":
         screenshot_result = await hermes_browser.screenshot(session_id)
         if screenshot_result["status"] == "success":
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "browser_screenshot",
                 "session_id": session_id,
                 "screenshot": screenshot_result["screenshot"],
@@ -1644,7 +1804,7 @@ async def handle_browser_click(websocket: WebSocket, message: dict):
     ref = message.get("ref")
 
     if not ref:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "ref required",
         })
@@ -1652,7 +1812,7 @@ async def handle_browser_click(websocket: WebSocket, message: dict):
 
     result = await hermes_browser.click(session_id, ref)
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "browser_click_result",
         "session_id": session_id,
         "result": result,
@@ -1661,7 +1821,7 @@ async def handle_browser_click(websocket: WebSocket, message: dict):
     if result["status"] == "success":
         screenshot_result = await hermes_browser.screenshot(session_id)
         if screenshot_result["status"] == "success":
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "browser_screenshot",
                 "session_id": session_id,
                 "screenshot": screenshot_result["screenshot"],
@@ -1676,7 +1836,7 @@ async def handle_browser_type(websocket: WebSocket, message: dict):
     text = message.get("text")
 
     if not ref or text is None:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "ref and text required",
         })
@@ -1684,7 +1844,7 @@ async def handle_browser_type(websocket: WebSocket, message: dict):
 
     result = await hermes_browser.type_text(session_id, ref, text)
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "browser_type_result",
         "session_id": session_id,
         "result": result,
@@ -1696,7 +1856,7 @@ async def handle_browser_screenshot(websocket: WebSocket, message: dict):
 
     result = await hermes_browser.screenshot(session_id)
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "browser_screenshot",
         "session_id": session_id,
         "screenshot": result.get("screenshot"),
@@ -1711,7 +1871,7 @@ async def handle_browser_snapshot(websocket: WebSocket, message: dict):
 
     result = await hermes_browser.get_snapshot(session_id)
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "browser_snapshot",
         "session_id": session_id,
         "result": result,
@@ -1725,7 +1885,7 @@ async def handle_browser_scroll(websocket: WebSocket, message: dict):
 
     result = await hermes_browser.scroll(session_id, direction, amount)
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "browser_scroll_result",
         "session_id": session_id,
         "result": result,
@@ -1737,13 +1897,13 @@ async def handle_browser_search(websocket: WebSocket, message: dict):
     query = message.get("query")
 
     if not query:
-        await websocket.send_json({
+        await safe_send(websocket,{
             "type": "error",
             "message": "query required",
         })
         return
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "browser_searching",
         "session_id": session_id,
         "query": query,
@@ -1751,7 +1911,7 @@ async def handle_browser_search(websocket: WebSocket, message: dict):
 
     result = await hermes_browser.search_google(session_id, query)
 
-    await websocket.send_json({
+    await safe_send(websocket,{
         "type": "browser_search_result",
         "session_id": session_id,
         "result": result,
@@ -1760,10 +1920,217 @@ async def handle_browser_search(websocket: WebSocket, message: dict):
     if result["status"] == "success":
         screenshot_result = await hermes_browser.screenshot(session_id)
         if screenshot_result["status"] == "success":
-            await websocket.send_json({
+            await safe_send(websocket,{
                 "type": "browser_screenshot",
                 "session_id": session_id,
                 "screenshot": screenshot_result["screenshot"],
                 "url": screenshot_result["url"],
                 "title": screenshot_result["title"],
             })
+
+
+async def handle_browser_get_state(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id")
+    
+    if session_id:
+        result = hermes_browser.get_tab_info(session_id)
+    else:
+        result = await hermes_browser.get_all_tabs_info()
+    
+    state_text = hermes_browser.get_browser_state_for_llm()
+    
+    await safe_send(websocket,{
+        "type": "browser_state",
+        "session_id": session_id,
+        "state": result,
+        "state_text": state_text,
+    })
+
+
+async def handle_browser_new_tab(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id", "default")
+    url = message.get("url", "about:blank")
+    
+    result = await hermes_browser.new_tab(session_id, url)
+    
+    await safe_send(websocket,{
+        "type": "browser_new_tab_result",
+        "session_id": session_id,
+        "result": result,
+    })
+    
+    if result["status"] == "success":
+        screenshot_result = await hermes_browser.screenshot(session_id)
+        if screenshot_result["status"] == "success":
+            await safe_send(websocket,{
+                "type": "browser_screenshot",
+                "session_id": session_id,
+                "screenshot": screenshot_result["screenshot"],
+                "url": screenshot_result["url"],
+                "title": screenshot_result["title"],
+            })
+
+
+async def handle_browser_switch_tab(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id", "default")
+    tab_index = message.get("tab_index", 0)
+    
+    result = await hermes_browser.switch_tab(session_id, tab_index)
+    
+    await safe_send(websocket,{
+        "type": "browser_switch_tab_result",
+        "session_id": session_id,
+        "result": result,
+    })
+    
+    if result["status"] == "success":
+        screenshot_result = await hermes_browser.screenshot(session_id)
+        if screenshot_result["status"] == "success":
+            await safe_send(websocket,{
+                "type": "browser_screenshot",
+                "session_id": session_id,
+                "screenshot": screenshot_result["screenshot"],
+                "url": screenshot_result["url"],
+                "title": screenshot_result["title"],
+            })
+
+
+async def handle_browser_close_tab(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id", "default")
+    tab_index = message.get("tab_index")
+    
+    result = await hermes_browser.close_tab(session_id, tab_index)
+    
+    await safe_send(websocket,{
+        "type": "browser_close_tab_result",
+        "session_id": session_id,
+        "result": result,
+    })
+    
+    if result["status"] == "success":
+        screenshot_result = await hermes_browser.screenshot(session_id)
+        if screenshot_result["status"] == "success":
+            await safe_send(websocket,{
+                "type": "browser_screenshot",
+                "session_id": session_id,
+                "screenshot": screenshot_result["screenshot"],
+                "url": screenshot_result["url"],
+                "title": screenshot_result["title"],
+            })
+
+
+async def handle_browser_page_summary(websocket: WebSocket, message: dict):
+    session_id = message.get("session_id", "default")
+    
+    result = await hermes_browser.get_page_summary(session_id)
+    
+    await safe_send(websocket,{
+        "type": "browser_page_summary",
+        "session_id": session_id,
+        "result": result,
+    })
+
+
+async def handle_rag_ingest(websocket: WebSocket, message: dict):
+    from app.services.rag_service import rag_service
+    
+    text = message.get("text", "")
+    file_path = message.get("file_path", "")
+    source = message.get("source", "websocket")
+    
+    if file_path:
+        result = await asyncio.to_thread(rag_service.ingest_file, file_path)
+    elif text:
+        count = await asyncio.to_thread(rag_service.ingest_text, text, source)
+        result = {"status": "success", "chunks_added": count}
+    else:
+        result = {"status": "error", "message": "Provide text or file_path"}
+    
+    await safe_send(websocket,{
+        "type": "rag_ingest_result",
+        "result": result,
+    })
+
+
+async def handle_rag_search(websocket: WebSocket, message: dict):
+    from app.services.rag_service import rag_service
+    
+    query = message.get("query", "")
+    top_k = message.get("top_k", 5)
+    
+    if not query:
+        await safe_send(websocket,{
+            "type": "error",
+            "message": "query required",
+        })
+        return
+    
+    results = await asyncio.to_thread(rag_service.search, query, top_k, 0.3)
+    context = await asyncio.to_thread(rag_service.get_context_for_llm, query, 3)
+    
+    await safe_send(websocket,{
+        "type": "rag_search_result",
+        "query": query,
+        "results": results,
+        "context": context,
+    })
+
+
+async def handle_rag_status(websocket: WebSocket):
+    from app.services.rag_service import rag_service
+    
+    stats = await asyncio.to_thread(rag_service.get_stats)
+    
+    await safe_send(websocket,{
+        "type": "rag_status",
+        "stats": stats,
+    })
+
+
+async def handle_ocr_image(websocket: WebSocket, message: dict):
+    from app.services.ocr_service import ocr_service
+    
+    image_b64 = message.get("image", "")
+    prompt = message.get("prompt", "")
+    mode = message.get("mode", "ocr")
+    
+    if not image_b64:
+        await safe_send(websocket,{
+            "type": "error",
+            "message": "image (base64) required",
+        })
+        return
+    
+    if mode == "analyze":
+        result = await ocr_service.analyze_image(image_b64, prompt or "Describe what you see in this image.")
+    elif mode == "translate":
+        result = await ocr_service.translate_text(image_b64, prompt or "english")
+    elif mode == "describe":
+        result = await ocr_service.describe_and_read(image_b64)
+    else:
+        result = await ocr_service.ocr_image(image_b64, prompt=prompt if prompt else None)
+    
+    await safe_send(websocket,{
+        "type": "ocr_result",
+        "mode": mode,
+        "result": result,
+    })
+
+
+async def handle_ocr_screenshot(websocket: WebSocket, message: dict):
+    from app.services.ocr_service import ocr_service
+    
+    prompt = message.get("prompt", "")
+    
+    await safe_send(websocket,{
+        "type": "ocr_processing",
+        "message": "Capturing and reading screen...",
+    })
+    
+    result = await ocr_service.ocr_screenshot(prompt=prompt if prompt else None)
+    
+    await safe_send(websocket,{
+        "type": "ocr_result",
+        "mode": "screenshot",
+        "result": result,
+    })

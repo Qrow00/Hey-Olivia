@@ -19,6 +19,11 @@ class WebSocketService {
     _url = url;
     _reconnectTimer?.cancel();
     _pingTimer?.cancel();
+    
+    // Close old channel before reconnecting
+    try {
+      _channel?.sink.close();
+    } catch (e) {}
 
     try {
       _channel = WebSocketChannel.connect(Uri.parse(url));
@@ -78,6 +83,12 @@ class WebSocketService {
       } catch (e) {
         _isConnected = false;
       }
+    }
+  }
+
+  void reconnect() {
+    if (_url != null) {
+      connect(_url!);
     }
   }
 

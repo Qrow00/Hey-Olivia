@@ -26,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _transcriptionSubscription;
   StreamSubscription? _responseSubscription;
   StreamSubscription? _vadSubscription;
+  StreamSubscription? _messageSubscription;
   Timer? _wordPulseTimer;
   int _wordIndex = 0;
   List<String> _words = [];
@@ -111,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _setupConnectionWatch() {
     setState(() => _isConnected = widget.webSocketService.isConnected);
 
-    widget.webSocketService.messages.listen((_) {
+    _messageSubscription = widget.webSocketService.messages.listen((_) {
       if (!_isConnected) {
         setState(() => _isConnected = true);
         if (!_isListening) _autoStartListening();
@@ -138,6 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _transcriptionSubscription?.cancel();
     _responseSubscription?.cancel();
     _vadSubscription?.cancel();
+    _messageSubscription?.cancel();
     _voiceService.dispose();
     super.dispose();
   }

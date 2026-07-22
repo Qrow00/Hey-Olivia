@@ -31,13 +31,15 @@ class _BrowserWorker:
         self._playwright = None
         self._browser = None
         self._contexts: dict[str, Any] = {}
-        self._pages: dict[str, Any] = {}
+        self._pages: dict[str, Any] = {}  # session_id -> active page
+        self._all_pages: dict[str, list] = {}  # session_id -> [page1, page2, ...]
         self._ready = threading.Event()
+        self._init_error: Optional[str] = None
 
     def start(self):
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
-        self._ready.wait(timeout=15)
+        self._ready.wait(timeout=30)
 
     def _run(self):
         try:
@@ -46,18 +48,26 @@ class _BrowserWorker:
             try:
                 self._browser = self._playwright.chromium.launch(
                     headless=False,
-                    args=["--disable-blink-features=AutomationControlled", "--no-sandbox"]
+                    args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"]
                 )
                 print("Hermes Browser initialized (headless=False)")
-            except Exception:
-                self._browser = self._playwright.chromium.launch(
-                    headless=True,
-                    args=["--disable-blink-features=AutomationControlled", "--no-sandbox"]
-                )
-                print("Hermes Browser initialized (headless=True)")
+            except Exception as e:
+                print(f"[HERMES BROWSER] Headless=False failed, trying headless=True: {e}")
+                try:
+                    self._browser = self._playwright.chromium.launch(
+                        headless=True,
+                        args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"]
+                    )
+                    print("Hermes Browser initialized (headless=True)")
+                except Exception as e2:
+                    self._init_error = f"Failed to launch browser: {e2}"
+                    print(f"[HERMES BROWSER] {self._init_error}")
+                    self._ready.set()
+                    return
             self._ready.set()
         except Exception as e:
-            print(f"[HERMES BROWSER] Init failed: {e}")
+            self._init_error = f"Playwright init failed: {e}"
+            print(f"[HERMES BROWSER] {self._init_error}")
             self._ready.set()
             return
 
@@ -76,6 +86,12 @@ class _BrowserWorker:
             except Exception:
                 break
 
+    def get_init_error(self) -> Optional[str]:
+        return self._init_error
+
+    def is_ready(self) -> bool:
+        return self._browser is not None and self._init_error is None
+
     def call_sync(self, func, *args, **kwargs) -> tuple[str, Any]:
         task_id = f"{time.time()}_{id(func)}_{threading.current_thread().ident}"
         result_queue = queue.Queue()
@@ -88,9 +104,6 @@ class _BrowserWorker:
             return "error", "Timeout"
         finally:
             self._results.pop(task_id, None)
-
-    def is_ready(self) -> bool:
-        return self._browser is not None
 
     def stop(self):
         self._queue.put((None, None, None, None))
@@ -111,6 +124,18 @@ class HermesBrowserService:
         if self._initialized:
             return
         await asyncio.to_thread(_worker.start)
+        
+        # Wait for browser to be ready
+        max_wait = 30
+        waited = 0
+        while not _worker.is_ready() and waited < max_wait:
+            await asyncio.sleep(0.5)
+            waited += 0.5
+        
+        if not _worker.is_ready():
+            error = _worker.get_init_error() or "Browser initialization timeout"
+            raise Exception(f"Browser initialization failed: {error}")
+        
         self._initialized = True
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
         print("Hermes Browser Service ready")
@@ -160,6 +185,7 @@ class HermesBrowserService:
             page = context.new_page()
             _worker._contexts[session_id] = context
             _worker._pages[session_id] = page
+            _worker._all_pages[session_id] = [page]
             return session_id
 
         status, result = await self._call(_create)
@@ -173,6 +199,7 @@ class HermesBrowserService:
     async def destroy_session(self, session_id: str):
         self._sessions.pop(session_id, None)
         _worker._pages.pop(session_id, None)
+        _worker._all_pages.pop(session_id, None)
         context = _worker._contexts.pop(session_id, None)
 
         if context:
@@ -206,21 +233,56 @@ class HermesBrowserService:
         is_youtube = "youtube.com" in url or "youtu.be" in url
 
         def _nav():
-            response = page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            if is_youtube:
-                try:
-                    page.wait_for_selector("ytd-search, ytd-video-renderer, ytd-rich-grid-renderer", timeout=8000)
-                except Exception:
-                    pass
-                try:
-                    consent = page.locator("button:has-text('Accept all'), button:has-text('I agree'), button:has-text('Reject all')")
-                    if consent.count() > 0:
-                        consent.first.click(timeout=3000)
-                        page.wait_for_load_state("domcontentloaded", timeout=5000)
-                except Exception:
-                    pass
-            title = page.title()
-            return {"status": "success", "url": page.url, "title": title, "status_code": response.status if response else None}
+            try:
+                response = page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                
+                if is_youtube:
+                    # Wait for YouTube to load - try multiple selectors
+                    youtube_selectors = [
+                        "ytd-search",
+                        "ytd-video-renderer", 
+                        "ytd-rich-grid-renderer",
+                        "ytd-page-manager",
+                        "#contents",
+                        "ytd-app"
+                    ]
+                    for selector in youtube_selectors:
+                        try:
+                            page.wait_for_selector(selector, timeout=5000)
+                            break
+                        except Exception:
+                            continue
+                    
+                    # Handle consent dialog - try multiple patterns
+                    consent_selectors = [
+                        "button:has-text('Accept all')",
+                        "button:has-text('I agree')", 
+                        "button:has-text('Reject all')",
+                        "button[aria-label*='Accept']",
+                        "button[aria-label*='accept']",
+                        "ytd-button-renderer:has-text('Accept')",
+                        "ytd-button-renderer:has-text('Agree')"
+                    ]
+                    for selector in consent_selectors:
+                        try:
+                            consent = page.locator(selector)
+                            if consent.count() > 0:
+                                consent.first.click(timeout=2000)
+                                page.wait_for_load_state("domcontentloaded", timeout=3000)
+                                break
+                        except Exception:
+                            continue
+                    
+                    # Additional wait for YouTube to settle
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=5000)
+                    except Exception:
+                        pass
+                
+                title = page.title()
+                return {"status": "success", "url": page.url, "title": title, "status_code": response.status if response else None}
+            except Exception as e:
+                return {"status": "error", "message": f"Navigation failed: {str(e)}"}
 
         status, result = await self._call(_nav)
         return result if status == "ok" else {"status": "error", "message": result}
@@ -382,8 +444,335 @@ class HermesBrowserService:
             return {"status": "success", "content": result, "url": page.url}
         return {"status": "error", "message": result}
 
+    async def click_first_youtube_video(self, session_id: str) -> dict:
+        """Navigate to YouTube search, then click the first video to play it."""
+        page = self._get_page(session_id)
+        if not page:
+            return {"status": "error", "message": "Page not found"}
+
+        def _click_video():
+            try:
+                # Try multiple selectors for YouTube video links
+                selectors = [
+                    "ytd-video-renderer a#video-title",
+                    "ytd-video-renderer a#thumbnail",
+                    "ytd-rich-item-renderer a#video-title-link",
+                    "a.yt-simple-endpoint[href*='/watch']",
+                    "#contents ytd-video-renderer a",
+                ]
+                for sel in selectors:
+                    try:
+                        el = page.locator(sel)
+                        if el.count() > 0:
+                            el.first.click(timeout=10000)
+                            page.wait_for_load_state("domcontentloaded", timeout=15000)
+                            time.sleep(2)
+                            return {"status": "success", "url": page.url, "title": page.title()}
+                    except Exception:
+                        continue
+                
+                return {"status": "error", "message": "No video found to click"}
+            except Exception as e:
+                return {"status": "error", "message": f"Failed to click video: {str(e)}"}
+
+        status, result = await self._call(_click_video)
+        return result
+
+    async def get_page_summary(self, session_id: str) -> dict:
+        """Get a summary of clickable elements and key content on the page."""
+        page = self._get_page(session_id)
+        if not page:
+            return {"status": "error", "message": "Page not found"}
+
+        def _summary():
+            try:
+                return page.evaluate("""() => {
+                    const summary = {title: document.title, url: location.href};
+                    
+                    // Get main headings
+                    const headings = Array.from(document.querySelectorAll('h1, h2, h3')).slice(0, 5);
+                    summary.headings = headings.map(h => h.innerText.trim()).filter(t => t.length > 0);
+                    
+                    // Get key links
+                    const links = Array.from(document.querySelectorAll('a[href]')).slice(0, 10);
+                    summary.key_links = links.map(a => ({
+                        text: a.innerText.trim().substring(0, 50),
+                        href: a.href
+                    })).filter(l => l.text.length > 0);
+                    
+                    // Get buttons
+                    const buttons = Array.from(document.querySelectorAll('button, [role="button"]')).slice(0, 10);
+                    summary.buttons = buttons.map(b => b.innerText.trim()).filter(t => t.length > 0);
+                    
+                    // Get input fields
+                    const inputs = Array.from(document.querySelectorAll('input, textarea')).slice(0, 5);
+                    summary.inputs = inputs.map(i => ({
+                        type: i.type,
+                        placeholder: i.placeholder,
+                        name: i.name
+                    }));
+                    
+                    // Get page text summary (first 500 chars)
+                    const bodyText = document.body?.innerText || '';
+                    summary.text_preview = bodyText.substring(0, 500);
+                    
+                    return summary;
+                }""")
+            except Exception as e:
+                return {"error": str(e)}
+
+        status, result = await self._call(_summary)
+        if status == "ok":
+            return {"status": "success", "summary": result}
+        return {"status": "error", "message": result}
+
     def list_sessions(self) -> list[dict]:
         return [{"session_id": s.session_id, "created_at": s.created_at, "last_active": s.last_active} for s in self._sessions.values()]
+
+    def get_tab_info(self, session_id: str) -> dict:
+        """Get info about all tabs in a session."""
+        session = self.get_session(session_id)
+        if not session:
+            return {"status": "error", "message": "Session not found"}
+        
+        context = _worker._contexts.get(session_id)
+        if not context:
+            return {"status": "error", "message": "Context not found"}
+        
+        pages = context.pages
+        tabs = []
+        active_page = _worker._pages.get(session_id)
+        
+        for i, page in enumerate(pages):
+            try:
+                title = page.title()
+                url = page.url
+            except Exception:
+                title = "(loading)"
+                url = "about:blank"
+            
+            tabs.append({
+                "index": i,
+                "title": title,
+                "url": url,
+                "is_active": page == active_page,
+            })
+        
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "total_tabs": len(tabs),
+            "active_tab_index": next((i for i, t in enumerate(tabs) if t["is_active"]), 0),
+            "tabs": tabs,
+        }
+
+    async def get_all_tabs_info(self, session_id: str = None) -> dict:
+        """Get info about all tabs across all sessions or a specific session."""
+        if session_id:
+            return self.get_tab_info(session_id)
+        
+        result = {}
+        for sid in self._sessions:
+            result[sid] = self.get_tab_info(sid)
+        return {"status": "success", "sessions": result}
+
+    def get_browser_state_for_llm(self) -> str:
+        """Get a text summary of browser state for LLM context."""
+        if not self._sessions:
+            return "Browser: No active browser sessions."
+        
+        lines = ["Browser Status: Open"]
+        
+        for session_id, session in self._sessions.items():
+            context = _worker._contexts.get(session_id)
+            if not context:
+                continue
+            
+            pages = context.pages
+            active_page = _worker._pages.get(session_id)
+            
+            lines.append(f"\nSession '{session_id}': {len(pages)} tab(s) open")
+            
+            for i, page in enumerate(pages):
+                try:
+                    title = page.title()
+                    url = page.url
+                except Exception:
+                    title = "(loading)"
+                    url = "about:blank"
+                
+                prefix = "→" if page == active_page else " "
+                lines.append(f"  {prefix} Tab {i+1}: {title} | {url}")
+                
+                # Add page context for active tab
+                if page == active_page:
+                    try:
+                        # Get headings
+                        headings = page.evaluate("() => Array.from(document.querySelectorAll('h1,h2,h3')).slice(0,3).map(h => h.innerText.trim()).filter(t => t)")
+                        if headings:
+                            lines.append(f"    Headings: {', '.join(headings)}")
+                        
+                        # Get visible buttons/links for navigation
+                        elements = page.evaluate("""() => {
+                            const items = [];
+                            document.querySelectorAll('a, button, [role="button"]').forEach(el => {
+                                const text = el.innerText?.trim();
+                                if (text && text.length > 0 && text.length < 40) items.push(text);
+                            });
+                            return [...new Set(items)].slice(0, 8);
+                        }""")
+                        if elements:
+                            lines.append(f"    Clickable: {', '.join(elements)}")
+                        
+                        # Get input fields
+                        inputs = page.evaluate("""() => {
+                            return Array.from(document.querySelectorAll('input:not([type="hidden"]), textarea')).slice(0, 3).map(i => ({
+                                placeholder: i.placeholder || i.name || i.type,
+                                type: i.type
+                            }));
+                        }""")
+                        if inputs:
+                            input_descs = [f"{i.get('placeholder', i.get('type', 'field'))}" for i in inputs]
+                            lines.append(f"    Inputs: {', '.join(input_descs)}")
+                    except Exception:
+                        pass
+        
+        return "\n".join(lines)
+
+    def get_current_tab_info(self, session_id: str) -> dict:
+        """Get info about the currently active tab."""
+        session = self.get_session(session_id)
+        if not session:
+            return {"status": "error", "message": "Session not found"}
+        
+        page = self._get_page(session_id)
+        if not page:
+            return {"status": "error", "message": "Page not found"}
+        
+        try:
+            title = page.title()
+            url = page.url
+        except Exception:
+            title = "(loading)"
+            url = "about:blank"
+        
+        context = _worker._contexts.get(session_id)
+        total_tabs = len(context.pages) if context else 1
+        active_index = 0
+        if context:
+            for i, p in enumerate(context.pages):
+                if p == page:
+                    active_index = i
+                    break
+        
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "title": title,
+            "url": url,
+            "tab_index": active_index,
+            "total_tabs": total_tabs,
+        }
+
+    async def new_tab(self, session_id: str, url: str = "about:blank") -> dict:
+        """Open a new tab in the session."""
+        session = self.get_session(session_id)
+        if not session:
+            return {"status": "error", "message": "Session not found"}
+        
+        context = _worker._contexts.get(session_id)
+        if not context:
+            return {"status": "error", "message": "Context not found"}
+        
+        def _new_tab():
+            page = context.new_page()
+            if url != "about:blank":
+                if not url.startswith(("http://", "https://")):
+                    url_with_protocol = "https://" + url
+                else:
+                    url_with_protocol = url
+                page.goto(url_with_protocol, wait_until="domcontentloaded", timeout=30000)
+            
+            _worker._pages[session_id] = page
+            _worker._all_pages.setdefault(session_id, []).append(page)
+            
+            try:
+                title = page.title()
+                page_url = page.url
+            except Exception:
+                title = "(loading)"
+                page_url = url
+            
+            return {"status": "success", "title": title, "url": page_url}
+        
+        status, result = await self._call(_new_tab)
+        return result if status == "ok" else {"status": "error", "message": result}
+
+    async def switch_tab(self, session_id: str, tab_index: int) -> dict:
+        """Switch to a specific tab by index."""
+        session = self.get_session(session_id)
+        if not session:
+            return {"status": "error", "message": "Session not found"}
+        
+        context = _worker._contexts.get(session_id)
+        if not context:
+            return {"status": "error", "message": "Context not found"}
+        
+        pages = context.pages
+        if tab_index < 0 or tab_index >= len(pages):
+            return {"status": "error", "message": f"Invalid tab index. Valid range: 0-{len(pages)-1}"}
+        
+        page = pages[tab_index]
+        _worker._pages[session_id] = page
+        
+        try:
+            title = page.title()
+            url = page.url
+        except Exception:
+            title = "(loading)"
+            url = "about:blank"
+        
+        return {"status": "success", "title": title, "url": url, "tab_index": tab_index}
+
+    async def close_tab(self, session_id: str, tab_index: int = None) -> dict:
+        """Close a specific tab or the active tab."""
+        session = self.get_session(session_id)
+        if not session:
+            return {"status": "error", "message": "Session not found"}
+        
+        context = _worker._contexts.get(session_id)
+        if not context:
+            return {"status": "error", "message": "Context not found"}
+        
+        pages = context.pages
+        if len(pages) <= 1:
+            return {"status": "error", "message": "Cannot close the last tab"}
+        
+        if tab_index is None:
+            active_page = _worker._pages.get(session_id)
+            for i, p in enumerate(pages):
+                if p == active_page:
+                    tab_index = i
+                    break
+            if tab_index is None:
+                tab_index = 0
+        
+        if tab_index < 0 or tab_index >= len(pages):
+            return {"status": "error", "message": f"Invalid tab index. Valid range: 0-{len(pages)-1}"}
+        
+        def _close_tab():
+            page_to_close = pages[tab_index]
+            page_to_close.close()
+            
+            remaining = context.pages
+            if remaining:
+                new_active = min(tab_index, len(remaining) - 1)
+                _worker._pages[session_id] = remaining[new_active]
+            
+            return {"status": "success", "closed_tab_index": tab_index, "remaining_tabs": len(context.pages)}
+        
+        status, result = await self._call(_close_tab)
+        return result if status == "ok" else {"status": "error", "message": result}
 
 
 hermes_browser = HermesBrowserService()

@@ -1,0 +1,297 @@
+# JARVIS Project Memory
+
+## Project Overview
+- **Path:** `C:\Users\toshi\Documents\main jarvis`
+- **Backend:** Python FastAPI (`backend/`) + Uvicorn
+- **Client:** Flutter Windows desktop (`client/`)
+- **Flutter path:** `C:\flutter\bin\flutter.bat` (run with `-d windows`)
+- **GitHub:** `https://github.com/Qrow00/Hey-Olivia.git`
+
+## Architecture
+- Single WebSocket connection (`/ws`) for all real-time communication
+- REST endpoints for device/camera/wearable CRUD
+- State management: manual `StreamController.broadcast()` + `setState()` (no Provider/Bloc)
+- Services exported as module-level singletons
+- Playwright sync API on dedicated worker thread (not async) — Windows ProactorEventLoop limitation
+- All `_call()` to browser worker must use `asyncio.to_thread`
+
+## GPU & Inference
+- **GPU:** AMD Radeon RX 6600 (8GB VRAM)
+- **Local LLM:** Ollama with `llama3.2:latest` (2.0 GB)
+- **STT:** Whisper `tiny` model (auto-detects CUDA via `torch.cuda.is_available()`)
+- **TTS:** Edge TTS (`en-US-GuyNeural` default)
+- **Cloud LLM:** Nemotron Ultra 550B via NVIDIA NIM API (planned)
+
+## Backend Data Structures
+
+### SQLAlchemy ORM (`backend/app/models/models.py`)
+- `User` (id, name, avatar, created_at, settings, devices, conversations)
+- `Device` (id, user_id, name, type, platform, ip, tailscale_ip, capabilities, status, last_seen, last_heartbeat, battery, signal, os_version, app_version, extra_data)
+- `Conversation` (id, user_id, started_at, ended_at, user, messages)
+- `Message` (id, conversation_id, role, content, type, timestamp, meta)
+- `Command` (id, name, alias, category, handler, requires_auth, enabled)
+
+### Dataclasses (Services)
+- `StyleProfile` (personality_service) — formality, humor, verbosity, empathy, directness, enthusiasm (all float)
+- `Opinion` (personality_service) — topic, stance, confidence, learned_from, timestamp
+- `CommandPattern` (command_registry) — patterns, handler, description, category, examples
+- `BrowserSession` (hermes_browser) — session_id, created_at, last_active, viewport_width, viewport_height
+- `CameraConfig` (rtsp_service) — id, name, url, username, password, type, location, is_online, last_frame_time
+- `CameraSession` (rtsp_service) — config, capture, is_streaming, viewers, fps, quality
+- `CaptureConfig` (screen_share_service) — fps, quality, width, height, format
+- `ScreenAnalysis` (screen_share_service) — enabled, interval, last_analysis, description, objects, text
+- `ScreenShareSession` (screen_share_service) — id, device_id, source, status, started_at, capture, analysis, viewer_count, last_frame_at, frame_count
+- `SmartDevice` (smart_home_service) — id, name, type(DeviceType), protocol(Protocol), ip, topic, room, is_online, is_on, brightness, color, temperature, humidity, battery, state, capabilities, last_update
+- `HealthMetric` (wearable_service) — device_id, metric, value, unit, timestamp
+- `WearableDevice` (wearable_service) — id, name, type, platform, is_online, battery, firmware_version, last_sync
+- `HealthSummary` (wearable_service) — heart_rate, spo2, steps, sleep, calories, stress, blood_pressure, body_temperature (all Optional[dict])
+- `ObservationConfig` (vision_service) — camera_ids, mode(ObservationMode), interval, alert_on_motion, alert_on_person, alert_on_unknown, track_people, describe_scene, custom_prompt
+- `SceneObservation` (vision_service) — camera_id, camera_name, timestamp, description, people_count, people_actions, objects_detected, motion_detected, alerts, frame_b64
+- `ObservationSession` (vision_service) — id, config, is_active, last_observation, observation_history, task
+- `VoiceProfile` (voice_profile_service) — id, name, voice, rate, pitch, volume, description, language, is_default
+- `PluginInfo` (plugins/base) — id, name, version, description, author, capabilities, enabled
+
+### Enums
+- `ObservationMode` — IDLE, WATCH, SCAN, ALERT
+- `DeviceType` — LIGHT, SWITCH, THERMOSTAT, LOCK, FAN, CURTAIN, SENSOR, PLUG, SPEAKER, CAMERA
+- `Protocol` — MQTT, HTTP, HUE, TASMOTA, SHELLY
+
+### Pydantic Models (API Layer)
+- `ChatRequest` (voice.py) — message, system_prompt, conversation_history
+- `VoiceConfig` (voice.py) — stt_model, tts_voice, llm_model
+- `CreateSessionRequest` (browser.py) — session_id, viewport_width, viewport_height, persist_cookies
+- `NavigateRequest`, `ClickRequest`, `TypeRequest`, `ScrollRequest`, `SearchRequest`, `ExtractRequest`, `JavascriptRequest` (browser.py)
+- `DeviceCreate`, `DeviceUpdate`, `HeartbeatData` (devices.py)
+- `SmartDeviceCreate`, `DeviceControl`, `SceneCreate`, `MQTTConfig` (smart_home.py)
+- `CameraCreate`, `CameraUpdate` (cameras.py)
+- `WearableCreate`, `HealthUpdate` (wearables.py)
+- `StartSessionRequest`, `AnalyzeRequest` (screen_share.py)
+- `ProfileCreate`, `ProfileUpdate`, `ActivateProfile` (voice_profiles.py)
+- `CommandParse`, `CommandExecute` (commands.py)
+- `StyleUpdate`, `OpinionLearn`, `PreferenceLearn`, `FeedbackAdjust`, `NameUpdate` (personality.py)
+- `VisionQuery`, `ObservationStart` (vision.py)
+- `PluginCommand` (plugins.py)
+
+### Service Singletons
+| File | Singleton | Class |
+|------|-----------|-------|
+| voice_service.py | `voice_service` | `VoiceService` |
+| command_registry.py | `command_registry` | `CommandRegistry` |
+| hermes_browser.py | `hermes_browser` | `HermesBrowserService` |
+| conversation_memory.py | `conversation_memory` | `ConversationMemory` |
+| knowledge_service.py | `knowledge_service` | `KnowledgeService` |
+| personality_service.py | `personality_service` | `PersonalityService` |
+| rtsp_service.py | `rtsp_service` | `RTSPService` |
+| screen_share_service.py | `screen_share_service` | `ScreenShareService` |
+| smart_home_service.py | `smart_home_service` | `SmartHomeService` |
+| system_command_service.py | `system_command_service` | `SystemCommandService` |
+| vision_service.py | `vision_service` | `VisionService` |
+| voice_profile_service.py | `voice_profile_service` | `VoiceProfileService` |
+| wearable_service.py | `wearable_service` | `WearableService` |
+
+## Flutter Client Data Structures
+
+### Models (`client/lib/models/`)
+- `Message` (id, role, content, type, timestamp)
+- `Conversation` (id, userId, startedAt, messages)
+- `Device` (id, name, type, platform, status, ip, tailscaleIp, capabilities, lastSeen, lastHeartbeat, battery, signal, osVersion, appVersion, metadata)
+- `SmartDevice` (id, name, type, protocol, ip, topic, room, isOnline, isOn, brightness, color, temperature, humidity, battery, state, capabilities, lastUpdate)
+- `WearableDevice` (id, name, type, platform, isOnline, battery, firmwareVersion, lastSync, healthSummary)
+- `HealthSummary` (heartRate, spo2, steps, sleep, calories, stress, bloodPressure, bodyTemperature)
+- `HealthMetricData` (current, unit, avg, min, max, todayTotal)
+- `HealthAlert` (type, severity, message, value)
+
+### Services (`client/lib/services/`)
+- `WebSocketService` — connect, send, disconnect, messages stream, exitApp stream, 20s ping keepalive
+- `VoiceService` — VAD (idle/listening/speaking/processing), ffmpeg mic capture, WAV encoding, text_message/voice_chunk
+- `BrowserService` — createSession, navigate, click, typeText, screenshot, snapshot, scroll, search, goBack, goForward
+- `DeviceService` — fetchDevices, addDevice, removeDevice, registerDevice, sendHeartbeat
+- `ScreenShareService` — startStreaming, stopStreaming, viewSession, unviewSession, requestAnalysis
+- `CameraService` — fetchCameras, addCamera, removeCamera, startViewing, stopViewing
+- `WearableService` — fetchDevices, registerDevice, updateHealth, getHealthSummary
+- `SmartHomeService` — fetchDevices, control (on/off/toggle/brightness/color/temperature), MQTT connect
+- `VisionService` — analyzeCamera, quickLook, scanAllCameras, startObservation, stopObservation
+- `PersonalityService` — getStatus, updateStyle, setFeedback, learnOpinion, setName
+- `VoiceProfileService` — getProfiles, switchProfile, createProfile, deleteProfile
+- `NotificationService` — addNotification, addHealthAlert, addDeviceAlert, addSecurityAlert
+- `ApiService` — REST client for /api/* endpoints
+
+### WebSocket Message Types
+**Client → Server:** ping, farewell, voice_chunk, text_message, device_register, device_heartbeat, screen_start/frame/stop/view/unview/analyze, camera_view/unview/frame_request, wearable_health_update/subscribe/unsubscribe, vision_analyze/quick_look/scan_all/observe_start/stop, browser_create/destroy/navigate/click/type/screenshot/snapshot/scroll/search
+**Server → Client:** pong, avatar_state, voice_response, text_response, error, device_connected/heartbeat/status_update/disconnected, screen_started/stopped/frame/viewing/unviewing/analysis, camera_frame/viewing/unviewing, wearable_health_data, smart_home_update, vision_result/scan_result/observation/alert, browser_session_created/destroyed, navigate_result/screenshot/snapshot/click_result/type_result/scroll_result/search_result
+
+## Voice Pipeline Flow
+1. Flutter captures audio via ffmpeg (16kHz mono s16le)
+2. VAD detects speech (energy threshold 400, 3-frame start, 25-frame silence end)
+3. Audio WAV sent as `voice_chunk` over WebSocket
+4. Backend STT (Whisper tiny, GPU if available)
+5. Command registry regex match → if matched, execute + quick response
+6. If no regex match → LLM parse via `llm_parse_command` (llama3.2)
+7. If no command → full voice pipeline (STT → LLM → TTS)
+8. Known commands skip LLM entirely via `COMMAND_RESPONSES` dict
+9. TTS runs in parallel with command execution via `asyncio.gather`
+
+## Planned Feature: Parallel llama3.2 + Nemotron Ultra
+
+### Overview
+Add cloud LLM (Nemotron Ultra 550B) via NVIDIA NIM API alongside local llama3.2. Two cloud modes:
+- **Fast Mode:** 256K context, thinking OFF, temp=0.0, max_tokens=4096
+- **Deep Mode:** 1M context, thinking ON, temp=0.6, budget=10K tokens, max_tokens=16384
+
+### Routing (Auto-Detect)
+- Short messages (<12 words) → llama3.2 (local, instant)
+- Moderate complexity (<80 words) → Nemotron Fast
+- Complex/reasoning keywords → Nemotron Deep
+- User can override with "set nemotron mode to fast/deep/auto"
+
+### NVIDIA NIM API
+- Endpoint: `https://integrate.api.nvidia.com/v1`
+- Model: `nvidia/nemotron-3-ultra-550b-a55b`
+- Auth: `NVIDIA_API_KEY` env var (Bearer token)
+- OpenAI-compatible chat completions format
+
+### Files to Create
+- `backend/app/services/nemotron_service.py` — NemotronConfig dataclass, NemotronService class
+  - `chat_completion(message, system_prompt, conversation_history, mode="fast")` → dict
+  - `_build_fast_request(messages)` → request dict
+  - `_build_deep_request(messages)` → request dict
+  - `_parse_response(response, mode)` → dict
+
+### Files to Modify
+- `backend/app/services/voice_service.py` — add `_route_query()`, modify `chat_completion()` to route
+- `backend/app/routers/websocket.py` — add `set_nemotron_mode` handler, add model info to responses
+- `backend/requirements.txt` — add `openai>=1.0.0`
+- `client/lib/screens/home_screen.dart` — show model badge (llama3.2 / Nemotron Fast / Nemotron Deep)
+- `client/lib/services/websocket_service.dart` — add `setNemotronMode()` method
+
+### New WebSocket Messages
+- Client → Server: `{"type": "set_nemotron_mode", "mode": "fast|deep|auto"}`
+- Server → Client (in voice_response): `"model": "nemotron_fast|nemotron_deep|llama3.2"`, `"nemotron_mode": "fast|deep"`
+
+### Implementation Order
+1. Create `nemotron_service.py` with NemotronConfig + NemotronService
+2. Add `openai>=1.0.0` to requirements.txt
+3. Modify `voice_service.py` routing logic
+4. Update `websocket.py` handlers + mode setter
+5. Update Flutter client for model display
+6. Test end-to-end routing
+
+### Prerequisites
+- User has NVIDIA API key (confirmed)
+- Set `NVIDIA_API_KEY` environment variable
+
+## Current Issues & Fixes (Session History)
+1. **Playwright thread affinity:** Sync Playwright on async loop → dedicated worker thread + `asyncio.to_thread`
+2. **Event loop blocking:** `_call()` with `queue.get(timeout=30)` → `asyncio.to_thread` wrapper
+3. **WebSocket disconnect loop:** 10-20s voice processing with no status → heartbeat (15s) + client ping (20s) + status updates
+4. **CPU inference:** Whisper hardcoded `device="cpu"` → auto-detect CUDA
+5. **Regex stealing:** `play (?:the )?(.+)` matching YouTube commands → anchored with `^`
+6. **YouTube consent:** Browser auto-dismisses consent page during navigation
+7. **URL encoding:** `+` replaced with `urllib.parse.quote` for proper encoding
+8. **Fast-path commands:** 40+ known commands skip LLM via `COMMAND_RESPONSES` dict
+9. **Parallel TTS:** `asyncio.gather` runs TTS + command execution simultaneously
+10. **WebSocket reconnect loop:** Old channel not closed before reconnecting → added `_channel?.sink.close()` in `connect()`, added public `reconnect()` method
+11. **Firewall blocking:** `[WinError 10013]` on port 8000 → added firewall rule via `netsh advfirewall`
+12. **Flutter build error:** `Endian` not defined → added `import 'dart:typed_data'` to `voice_service.dart`
+13. **YouTube command pattern ordering:** `open_youtube` registered before `play_youtube` → greedy `(.+)` captured "and play let it be by the beatles" → swapped registration order so `play_youtube` matches first
+14. **YouTube search not playing:** Handlers only navigated to search results → added `click_first_youtube_video()` to auto-click first video result
+15. **LLM context enrichment:** `_build_system_prompt()` now injects browser state (tabs, URLs, page elements) and RAG knowledge into every LLM prompt
+
+## RAG (Retrieval-Augmented Generation)
+
+### Service: `backend/app/services/rag_service.py`
+- **Embeddings:** Ollama `nomic-embed-text` model
+- **Vector store:** numpy in-memory with cosine similarity (persisted to `data/rag/`)
+- **Persistence:** `data/rag/embeddings.npy` + `data/rag/metadata.json`
+- **Chunking:** 500 words per chunk with 50 word overlap
+- **Methods:**
+  - `ingest_text(text, source, metadata)` → add text to knowledge base
+  - `ingest_file(file_path)` → supports .txt, .md, .py, .js, .json, .csv, .pdf, etc.
+  - `search(query, top_k=5, threshold=0.3)` → semantic search with cosine similarity
+  - `get_context_for_llm(query, top_k=3)` → auto-injected into LLM prompts
+  - `get_stats()` → total chunks, sources, model info
+  - `clear_source(source)` / `clear_all()` → cleanup
+- **Auto-integration:** Every LLM call in `websocket.py` now searches RAG for relevant context
+
+### Voice Commands (RAG)
+- "Learn this document" / "Index this file" → `rag_ingest`
+- "Search your knowledge for..." / "What do you know about..." → `rag_search`
+- "RAG status" / "How much do you know?" → `rag_status`
+- "Clear knowledge" / "Reset RAG" → `rag_clear`
+
+### WebSocket Messages (RAG)
+- `rag_ingest` → `{text, file_path, source}` → `rag_ingest_result`
+- `rag_search` → `{query, top_k}` → `rag_search_result` (includes results + context)
+- `rag_status` → `rag_status` (stats)
+
+## OCR (Optical Character Recognition)
+
+### Service: `backend/app/services/ocr_service.py`
+- **Model:** `llava:7b` vision model via Ollama (already installed)
+- **No pytesseract needed** — uses multimodal LLM for visual understanding
+- **Methods:**
+  - `ocr_image(image_b64, prompt, language)` → extract text from image
+  - `ocr_from_url(image_url, prompt)` → download + OCR
+  - `ocr_from_file(file_path, prompt)` → read file + OCR
+  - `ocr_screenshot(prompt)` → capture screen + OCR (PowerShell screenshot)
+  - `analyze_image(image_b64, question)` → general visual Q&A
+  - `translate_text(image_b64, target_language)` → OCR + translation
+  - `describe_and_read(image_b64)` → brief description + full text extraction
+
+### Voice Commands (OCR)
+- "Read this screenshot" / "What's in this image?" → `ocr_screenshot`
+- "Read the image photo.png" / "OCR the picture" → `ocr_file`
+
+### WebSocket Messages (OCR)
+- `ocr_image` → `{image: base64, prompt, mode: ocr|analyze|translate|describe}` → `ocr_result`
+- `ocr_screenshot` → `{prompt}` → `ocr_processing` → `ocr_result`
+
+## Browser Tab Management
+
+### New Methods (hermes_browser.py)
+- `get_tab_info(session_id)` → all tabs with title, URL, active index
+- `get_all_tabs_info(session_id)` → all sessions' tabs
+- `get_browser_state_for_llm()` → enhanced with page headings, clickable elements, input fields
+- `new_tab(session_id, url)` → open new tab
+- `switch_tab(session_id, tab_index)` → switch to tab
+- `close_tab(session_id, tab_index)` → close tab
+- `click_first_youtube_video(session_id)` → find + click first video on YouTube search
+- `get_page_summary(session_id)` → headings, links, buttons, inputs, text preview
+
+### Voice Commands (Tabs)
+- "New tab" → `browser_new_tab`
+- "Switch to tab 2" / "Go to tab 1" → `browser_switch_tab`
+- "Close tab 1" / "Close current tab" → `browser_close_tab`
+- "What tabs are open?" / "Show tabs" → `browser_get_tabs`
+- "What's on the page?" / "What can I click?" → `browser_page_summary`
+
+### WebSocket Messages (Tabs)
+- `browser_new_tab` → `{session_id, url}` → `browser_new_tab_result`
+- `browser_switch_tab` → `{session_id, tab_index}` → `browser_switch_tab_result`
+- `browser_close_tab` → `{session_id, tab_index}` → `browser_close_tab_result`
+- `browser_get_state` → `{session_id}` → `browser_state` (with state_text for LLM)
+- `browser_page_summary` → `{session_id}` → `browser_page_summary`
+
+## Service Singletons (Updated)
+
+| File | Singleton | Class |
+|------|-----------|-------|
+| voice_service.py | `voice_service` | `VoiceService` |
+| command_registry.py | `command_registry` | `CommandRegistry` |
+| hermes_browser.py | `hermes_browser` | `HermesBrowserService` |
+| conversation_memory.py | `conversation_memory` | `ConversationMemory` |
+| knowledge_service.py | `knowledge_service` | `KnowledgeService` |
+| personality_service.py | `personality_service` | `PersonalityService` |
+| rtsp_service.py | `rtsp_service` | `RTSPService` |
+| screen_share_service.py | `screen_share_service` | `ScreenShareService` |
+| smart_home_service.py | `smart_home_service` | `SmartHomeService` |
+| system_command_service.py | `system_command_service` | `SystemCommandService` |
+| vision_service.py | `vision_service` | `VisionService` |
+| voice_profile_service.py | `voice_profile_service` | `VoiceProfileService` |
+| wearable_service.py | `wearable_service` | `WearableService` |
+| **rag_service.py** | `rag_service` | `RAGService` |
+| **ocr_service.py** | `ocr_service` | `OCRService` |
+
+## Updated WebSocket Message Types
+**Client → Server:** ping, farewell, voice_chunk, text_message, device_register, device_heartbeat, screen_start/frame/stop/view/unview/analyze, camera_view/unview/frame_request, wearable_health_update/subscribe/unsubscribe, vision_analyze/quick_look/scan_all/observe_start/stop, browser_create/destroy/navigate/click/type/screenshot/snapshot/scroll/search/get_state/new_tab/switch_tab/close_tab/page_summary, **rag_ingest/rag_search/rag_status, ocr_image/ocr_screenshot**
+**Server → Client:** pong, avatar_state, voice_response, text_response, error, device_connected/heartbeat/status_update/disconnected, screen_started/stopped/frame/viewing/unviewing/analysis, camera_frame/viewing/unviewing, wearable_health_data, smart_home_update, vision_result/scan_result/observation/alert, browser_session_created/destroyed, navigate_result/screenshot/snapshot/click_result/type_result/scroll_result/search_result, browser_state/new_tab_result/switch_tab_result/close_tab_result/page_summary, **rag_ingest_result/rag_search_result/rag_status, ocr_result/ocr_processing**

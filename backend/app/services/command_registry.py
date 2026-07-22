@@ -133,6 +133,32 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
+            patterns=[
+                r"play (.+) on (?:youtube|yt)",
+                r"play on (?:youtube|yt)",
+                r"play (?:on )?(?:youtube|yt) (.+)",
+                r"play (?:some )?(.+?) (?:on|on ) (?:youtube|yt)",
+                r"(?:can you |please )?play (?:some )?(?:music|a song|a video|something) on (?:youtube|yt)",
+                r"open (?:youtube|yt) (?:and )?(?:play|search) (.+)",
+                r"(?:search|find|look up) (?:for )?(.+?) on (?:youtube|yt)",
+                r"(?:i (?:want to|would like to|wanna)) (?:play|listen to|watch) (.+?) on (?:youtube|yt)",
+                r"(?:put on|queue up|start playing) (.+?) on (?:youtube|yt)",
+            ],
+            handler="play_youtube",
+            description="Play music on YouTube",
+            category="desktop",
+            examples=["Play jazz on YouTube", "Play lofi on YouTube", "Open YouTube and play music", "Search for classical music on youtube"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:go to|open|search|find|look up|browse) (?:on )?(?:youtube\.com|youtube) (?:for )?(.+)", r"youtube (?:search (?:for )?)?(.+)", r"watch (.+) on youtube", r"search youtube (?:for )?(.+)", r"(?:can you |please )?(?:go to|open) youtube"],
+            handler="open_youtube",
+            description="Search YouTube",
+            category="desktop",
+            examples=["YouTube lofi hip hop", "Search YouTube for cooking tutorials", "Find funny cats on youtube"],
+        ))
+
+        self.register(CommandPattern(
             patterns=[r"^play (?:the )?(?:song |track )?(?:called )?(.+)", r"^play music (.+)", r"^play some (.+)"],
             handler="play_music",
             description="Play local music",
@@ -285,6 +311,39 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
+            patterns=[
+                r"play (.+) on (?:youtube|yt)",
+                r"play on (?:youtube|yt)",
+                r"play (?:on )?(?:youtube|yt) (.+)",
+                r"play (?:some )?(.+?) (?:on|on ) (?:youtube|yt)",
+                r"(?:can you |please )?play (?:some )?(?:music|a song|a video|something) on (?:youtube|yt)",
+                r"open (?:youtube|yt) (?:and )?(?:play|search) (.+)",
+                r"(?:search|find|look up) (?:for )?(.+?) on (?:youtube|yt)",
+                r"(?:i (?:want to|would like to|wanna)) (?:play|listen to|watch) (.+?) on (?:youtube|yt)",
+                r"(?:put on|queue up|start playing) (.+?) on (?:youtube|yt)",
+            ],
+            handler="play_youtube",
+            description="Play music on YouTube",
+            category="desktop",
+            examples=["Play jazz on YouTube", "Play lofi on YouTube", "Open YouTube and play music", "Search for classical music on youtube"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[
+                r"(?:go to|browse) (?:on )?(?:youtube\.com|youtube)(?:\s|$)",
+                r"(?:search|find|look up) (?:on )?(?:youtube\.com|youtube) (?:for )?(.+)",
+                r"youtube (?:search (?:for )?)?(.+)",
+                r"watch (.+) on youtube",
+                r"search youtube (?:for )?(.+)",
+                r"(?:can you |please )?(?:go to|open) youtube(?!\s*(?:and|then)\s*(?:play|search))",
+            ],
+            handler="open_youtube",
+            description="Search YouTube",
+            category="desktop",
+            examples=["YouTube lofi hip hop", "Search YouTube for cooking tutorials", "Find funny cats on youtube"],
+        ))
+
+        self.register(CommandPattern(
             patterns=[r"open (?:the )?(?:website |site )?(.+)", r"go to (?:the )?(?:website |site )?(.+)", r"visit (?:the )?(?:website |site )?(.+)", r"navigate to (.+)"],
             handler="browser_navigate",
             description="Navigate to a website",
@@ -365,6 +424,46 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
+            patterns=[r"open (?:a )?new tab", r"new tab", r"create (?:a )?tab"],
+            handler="browser_new_tab",
+            description="Open a new browser tab",
+            category="browser",
+            examples=["Open a new tab", "New tab", "Create a tab"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"switch to tab (\d+)", r"go to tab (\d+)", r"tab (\d+)", r"open tab (\d+)"],
+            handler="browser_switch_tab",
+            description="Switch to a specific tab",
+            category="browser",
+            examples=["Switch to tab 2", "Go to tab 1", "Tab 3"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"close tab (\d+)", r"close (?:the )?tab (\d+)", r"close current tab"],
+            handler="browser_close_tab",
+            description="Close a browser tab",
+            category="browser",
+            examples=["Close tab 1", "Close the current tab"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"(?:what|which) tab(?:s)? (?:is|are) open", r"show (?:open )?tabs", r"list tabs", r"how many tabs"],
+            handler="browser_get_tabs",
+            description="Show open browser tabs",
+            category="browser",
+            examples=["What tabs are open?", "Show tabs", "List tabs", "How many tabs?"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"what(?:'s| is) on (?:the )?page", r"describe (?:the )?page", r"what can (?:i|you) click", r"what(?:'s| is) (?:on )?(?:this|the) (?:site|website|page)", r"what buttons? (?:are|is) there", r"what links? (?:are|is) there"],
+            handler="browser_page_summary",
+            description="Get a summary of what's on the current page",
+            category="browser",
+            examples=["What's on the page?", "Describe the page", "What can I click?", "What buttons are there?"],
+        ))
+
+        self.register(CommandPattern(
             patterns=[r"open (.+) browser", r"launch (.+) browser", r"open browser (.+)"],
             handler="open_app",
             description="Open a browser by name",
@@ -378,54 +477,6 @@ class CommandRegistry:
             description="Open a common folder",
             category="desktop",
             examples=["Open my documents", "Open downloads folder", "Show my onedrive"],
-        ))
-
-        self.register(CommandPattern(
-            patterns=[r"open (.+)", r"launch (.+)", r"start (.+)"],
-            handler="open_app",
-            description="Open any application",
-            category="desktop",
-            examples=["Open Chrome", "Launch Spotify", "Start Notepad"],
-        ))
-
-        self.register(CommandPattern(
-            patterns=[r"open browser", r"open (?:google )?chrome", r"open (?:mozilla )?firefox", r"open edge", r"open firefox"],
-            handler="open_browser",
-            description="Open web browser",
-            category="desktop",
-            examples=["Open browser", "Open Chrome", "Open Firefox"],
-        ))
-
-        self.register(CommandPattern(
-            patterns=[
-                r"(?:go to|open|search|find|look up|browse) (?:on )?(?:youtube\.com|youtube) (?:for )?(.+)",
-                r"youtube (?:search (?:for )?)?(.+)",
-                r"watch (.+) on youtube",
-                r"search youtube (?:for )?(.+)",
-                r"(?:can you |please )?(?:go to|open) youtube",
-            ],
-            handler="open_youtube",
-            description="Search YouTube",
-            category="desktop",
-            examples=["YouTube lofi hip hop", "Search YouTube for cooking tutorials", "Find funny cats on youtube"],
-        ))
-
-        self.register(CommandPattern(
-            patterns=[
-                r"play (.+) on (?:youtube|yt)",
-                r"play on (?:youtube|yt)",
-                r"play (?:on )?(?:youtube|yt) (.+)",
-                r"play (?:some )?(.+?) (?:on|on ) (?:youtube|yt)",
-                r"(?:can you |please )?play (?:some )?(?:music|a song|a video|something) on (?:youtube|yt)",
-                r"open (?:youtube|yt) (?:and )?(?:play|search) (.+)",
-                r"(?:search|find|look up) (?:for )?(.+?) on (?:youtube|yt)",
-                r"(?:i (?:want to|would like to|wanna)) (?:play|listen to|watch) (.+?) on (?:youtube|yt)",
-                r"(?:put on|queue up|start playing) (.+?) on (?:youtube|yt)",
-            ],
-            handler="play_youtube",
-            description="Play music on YouTube",
-            category="desktop",
-            examples=["Play jazz on YouTube", "Play lofi on YouTube", "Open YouTube and play music", "Search for classical music on youtube"],
         ))
 
         self.register(CommandPattern(
@@ -461,7 +512,7 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
-            patterns=[r"(?:take|capture) (?:a )?(?:screenshot|screen(?:shot)?|screen capture)"],
+            patterns=[r"(?:open|show) (?:a )?(?:screenshot|screen(?:shot)?|screen capture)"],
             handler="screenshot",
             description="Take a screenshot",
             category="desktop",
@@ -690,6 +741,78 @@ class CommandRegistry:
             description="Show a summary of everything the AI has learned",
             category="memory",
             examples=["What do you know?", "Show your knowledge"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[
+                r"(?:learn|ingest|index|remember) (?:this |the )?(?:document|file|text|content)",
+                r"(?:add|store) (?:this |the )?(?:document|file|text) (?:to|into) (?:your )?(?:knowledge|memory|rag|docs)",
+                r"learn (?:this |the )?(?:file|document) (.+)",
+            ],
+            handler="rag_ingest",
+            description="Learn from a document or text file",
+            category="rag",
+            examples=["Learn this document", "Index this file", "Add this to your knowledge"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[
+                r"(?:search|look up|find|query) (?:your )?(?:knowledge|docs|documents|files|rag) (?:for )?(.+)",
+                r"(?:what|tell me|explain) (?:do you know|have you learned) (?:about )?(.+)",
+                r"(?:search|query) (?:knowledge|rag) (.+)",
+            ],
+            handler="rag_search",
+            description="Search the knowledge base",
+            category="rag",
+            examples=["Search your knowledge for Python tips", "What do you know about machine learning?"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[
+                r"(?:read|ocr|extract text from) (?:this |the )?(?:image|photo|picture|screenshot)",
+                r"(?:what(?:'s| is) (?:in |on )?)?this (?:image|photo|picture|screenshot)",
+                r"ocr (?:this |the )?(?:image|photo|picture|screenshot)",
+                r"extract text from (?:the )?(?:screen|screenshot)",
+            ],
+            handler="ocr_screenshot",
+            description="Read text from the screen or an image",
+            category="ocr",
+            examples=["Read this screenshot", "What's in this image?", "OCR this picture"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[
+                r"(?:read|ocr|extract text from) (?:the )?(?:file|image|photo|picture) (.+)",
+                r"ocr (?:the )?(?:file|image|photo|picture) (.+)",
+            ],
+            handler="ocr_file",
+            description="Read text from an image file",
+            category="ocr",
+            examples=["Read the image photo.png", "OCR the picture scan.jpg"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"rag (?:status|stats|info)", r"(?:knowledge|rag) (?:status|stats|count)"],
+            handler="rag_status",
+            description="Show RAG knowledge base status",
+            category="rag",
+            examples=["RAG status", "Knowledge stats", "How much do you know?"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"clear (?:rag|knowledge|docs|documents)", r"reset (?:rag|knowledge|docs)"],
+            handler="rag_clear",
+            description="Clear the knowledge base",
+            category="rag",
+            examples=["Clear knowledge", "Reset RAG"],
+        ))
+
+        self.register(CommandPattern(
+            patterns=[r"open (.+)", r"launch (.+)", r"start (.+)"],
+            handler="open_app",
+            description="Open any application",
+            category="desktop",
+            examples=["Open Chrome", "Launch Spotify", "Start Notepad"],
         ))
 
     def register(self, command: CommandPattern):
