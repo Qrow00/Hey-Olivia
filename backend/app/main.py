@@ -49,6 +49,14 @@ async def startup():
     except Exception as e:
         print(f"[HERMES BROWSER] Init deferred: {e}")
 
+    from app.services.monitoring_service import monitoring_service
+    from app.services.activity_logger import activity_logger
+    await monitoring_service.start_polling()
+    await activity_logger.start_polling()
+
+    from app.routers.websocket import _setup_monitoring_broadcast
+    _setup_monitoring_broadcast()
+
     print("J.A.R.V.I.S. v2.0.0 initialized")
 
 
@@ -57,6 +65,12 @@ async def shutdown():
     from app.services.conversation_memory import conversation_memory
     conversation_memory.save_on_exit()
     await hermes_browser.shutdown()
+
+    from app.services.monitoring_service import monitoring_service
+    from app.services.activity_logger import activity_logger
+    await monitoring_service.stop_polling()
+    await activity_logger.stop_polling()
+
     print("J.A.R.V.I.S. shutdown — memory saved")
 
 
@@ -89,5 +103,6 @@ async def api_root():
             "personality": "/api/v1/personality",
             "voice-profiles": "/api/v1/voice-profiles",
             "browser": "/api/v1/browser",
+            "monitoring": "ws://.../ws (type: monitoring_snapshot)",
         },
     }

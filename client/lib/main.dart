@@ -11,6 +11,7 @@ import 'screens/wearable_screen.dart';
 import 'screens/smart_home_screen.dart';
 import 'screens/personality_screen.dart';
 import 'screens/browser_screen.dart';
+import 'screens/monitoring_screen.dart';
 import 'services/websocket_service.dart';
 import 'services/device_service.dart';
 import 'services/screen_share_service.dart';
@@ -83,6 +84,7 @@ class _MainScreenState extends State<MainScreen> {
       SmartHomeScreen(smartHomeService: _smartHomeService),
       PersonalityScreen(),
       BrowserScreen(browserService: _browserService),
+      MonitoringScreen(webSocketService: _webSocketService),
       SettingsScreen(),
     ];
 
@@ -137,6 +139,7 @@ class _MainScreenState extends State<MainScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined, size: 20), label: 'Smart'),
           BottomNavigationBarItem(icon: Icon(Icons.psychology, size: 20), label: 'Mind'),
           BottomNavigationBarItem(icon: Icon(Icons.language, size: 20), label: 'Browser'),
+          BottomNavigationBarItem(icon: Icon(Icons.monitor_heart, size: 20), label: 'Monitor'),
           BottomNavigationBarItem(icon: Icon(Icons.settings, size: 20), label: 'Settings'),
         ],
       ),

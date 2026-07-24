@@ -25,6 +25,14 @@ paho-mqtt>=1.6.1
 # Browser Automation
 playwright>=1.49.0
 
+# System Monitoring
+psutil>=5.9.0
+GPUtil>=1.4.0
+
+# Wake Word Detection
+sounddevice>=0.4.6
+webrtcvad>=2.0.10
+
 # Testing
 pytest>=8.0.0
 pytest-asyncio>=0.23.0

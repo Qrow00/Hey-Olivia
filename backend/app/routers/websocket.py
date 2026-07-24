@@ -123,6 +123,191 @@ def _register_system_handlers():
     command_registry.register_handler("get_time", scs.get_time)
     command_registry.register_handler("get_date", scs.get_date)
 
+    from app.services.monitoring_service import monitoring_service
+    from app.services.alert_engine import alert_engine
+    from app.services.activity_logger import activity_logger
+
+    async def system_health_handler() -> dict:
+        return await asyncio.to_thread(monitoring_service.get_snapshot)
+
+    async def get_alerts_handler() -> dict:
+        alerts = await asyncio.to_thread(alert_engine.get_alert_history)
+        return {"status": "success", "alerts": alerts}
+
+    async def get_activity_log_handler() -> dict:
+        activity = await asyncio.to_thread(activity_logger.get_recent_activity)
+        return {"status": "success", "activity": activity}
+
+    async def get_active_window_handler() -> dict:
+        history = await asyncio.to_thread(activity_logger.get_active_window_history, 60)
+        return {"status": "success", "windows": history}
+
+    async def get_top_processes_handler() -> dict:
+        processes = await asyncio.to_thread(activity_logger.get_top_processes)
+        return {"status": "success", "processes": processes}
+
+    async def set_alert_threshold_handler(metric: str = "", value: float = 0) -> dict:
+        if not metric:
+            return {"status": "error", "message": "metric required"}
+        monitoring_service.set_threshold(metric, value)
+        return {"status": "success", "message": f"Set {metric} threshold to {value}"}
+
+    async def get_alert_thresholds_handler() -> dict:
+        return {"status": "success", "thresholds": monitoring_service.get_thresholds()}
+
+    command_registry.register_handler("system_health", system_health_handler)
+    command_registry.register_handler("get_alerts", get_alerts_handler)
+    command_registry.register_handler("get_activity_log", get_activity_log_handler)
+    command_registry.register_handler("get_active_window", get_active_window_handler)
+    command_registry.register_handler("get_top_processes", get_top_processes_handler)
+    command_registry.register_handler("set_alert_threshold", set_alert_threshold_handler)
+    command_registry.register_handler("get_alert_thresholds", get_alert_thresholds_handler)
+
+    from app.services.briefing_service import briefing_service
+
+    async def morning_briefing_handler() -> dict:
+        result = await briefing_service.generate_briefing(include_tts=False)
+        return {"status": "success", "briefing": result}
+
+    async def briefing_config_handler(source: str = "", enabled: str = "") -> dict:
+        if source and enabled:
+            briefing_service.configure({source: enabled.lower() in ("true", "1", "on")})
+        return {"status": "success", "config": briefing_service.get_config()}
+
+    command_registry.register_handler("morning_briefing", morning_briefing_handler)
+    command_registry.register_handler("briefing_config", briefing_config_handler)
+
+    from app.services.wake_word_service import wake_word_service
+
+    async def wake_word_start_handler() -> dict:
+        return await wake_word_service.start()
+
+    async def wake_word_stop_handler() -> dict:
+        return await wake_word_service.stop()
+
+    async def wake_word_config_handler(setting: str = "", value: str = "") -> dict:
+        if setting and value:
+            if setting == "sensitivity":
+                wake_word_service.set_sensitivity(float(value))
+            elif setting == "phrases":
+                wake_word_service.set_wake_phrases(value.split(","))
+        return {"status": "success", "config": wake_word_service.get_config()}
+
+    command_registry.register_handler("wake_word_start", wake_word_start_handler)
+    command_registry.register_handler("wake_word_stop", wake_word_stop_handler)
+    command_registry.register_handler("wake_word_config", wake_word_config_handler)
+
+    from app.services.routine_service import routine_service
+
+    async def create_routine_handler(name: str = "", description: str = "", steps: str = "") -> dict:
+        import json as _json
+        try:
+            step_list = _json.loads(steps) if steps else []
+        except _json.JSONDecodeError:
+            return {"status": "error", "message": "Invalid steps JSON"}
+        return routine_service.create(name, description, step_list)
+
+    async def run_routine_handler(name: str = "") -> dict:
+        if not name:
+            return {"status": "error", "message": "Routine name required"}
+        return await routine_service.run(name)
+
+    async def list_routines_handler() -> dict:
+        return {"status": "success", "routines": routine_service.get_all()}
+
+    async def delete_routine_handler(name: str = "") -> dict:
+        if not name:
+            return {"status": "error", "message": "Routine name required"}
+        return routine_service.delete(name)
+
+    command_registry.register_handler("create_routine", create_routine_handler)
+    command_registry.register_handler("run_routine", run_routine_handler)
+    command_registry.register_handler("list_routines", list_routines_handler)
+    command_registry.register_handler("delete_routine", delete_routine_handler)
+
+    from app.services.email_service import email_service
+    from app.services.screen_context_service import screen_context_service
+    from app.services.notification_service import notification_service
+
+    async def check_email_handler() -> dict:
+        emails = await email_service.get_recent(limit=5)
+        return {"status": "success", "emails": emails}
+
+    async def email_summary_handler() -> dict:
+        summary = await email_service.get_summary(limit=5)
+        return {"status": "success", "summary": summary}
+
+    async def screen_context_handler() -> dict:
+        result = await screen_context_service.capture_and_summarize()
+        return result
+
+    async def get_notifications_handler() -> dict:
+        return {"status": "success", "notifications": notification_service.get_recent()}
+
+    command_registry.register_handler("check_email", check_email_handler)
+    command_registry.register_handler("email_summary", email_summary_handler)
+    command_registry.register_handler("screen_context", screen_context_handler)
+    command_registry.register_handler("get_notifications", get_notifications_handler)
+
+    from app.services.suggestion_engine import suggestion_engine
+
+    async def get_suggestions_handler() -> dict:
+        from app.services.monitoring_service import monitoring_service
+        monitoring_data = monitoring_service.get_snapshot()
+        suggestions = await suggestion_engine.evaluate(monitoring_data=monitoring_data)
+        return {"status": "success", "suggestions": suggestions}
+
+    async def dismiss_suggestion_handler(suggestion_id: str = "") -> dict:
+        if not suggestion_id:
+            return {"status": "error", "message": "suggestion_id required"}
+        suggestion_engine.dismiss(suggestion_id)
+        return {"status": "success", "message": "Dismissed"}
+
+    command_registry.register_handler("get_suggestions", get_suggestions_handler)
+    command_registry.register_handler("dismiss_suggestion", dismiss_suggestion_handler)
+
+    from app.services.personality_enhancer import personality_enhancer
+
+    async def personality_enhance_handler(text: str = "", context: str = "") -> dict:
+        enhanced = personality_enhancer.enhance_response(text, context)
+        return {"status": "success", "enhanced": enhanced, "original": text}
+
+    async def personality_config_handler(setting: str = "", value: str = "") -> dict:
+        if setting and value:
+            if setting == "formality":
+                personality_enhancer.set_formality(float(value))
+            elif setting == "quip_frequency":
+                personality_enhancer.set_quip_frequency(float(value))
+            elif setting == "enabled":
+                personality_enhancer.set_enabled(value.lower() in ("true", "1", "on"))
+        return {"status": "success", "config": personality_enhancer.get_config()}
+
+    command_registry.register_handler("personality_enhance", personality_enhance_handler)
+    command_registry.register_handler("personality_config", personality_config_handler)
+
+    from app.services.device_mesh_service import device_mesh_service
+
+    async def send_to_device_handler(device_id: str = "", content: str = "") -> dict:
+        if not device_id or not content:
+            return {"status": "error", "message": "device_id and content required"}
+        device_mesh_service.queue_message(device_id, {"type": "push_message", "content": content})
+        return {"status": "success", "message": f"Queued for {device_id}"}
+
+    async def sync_clipboard_handler() -> dict:
+        clip = device_mesh_service.get_clipboard()
+        if clip:
+            return {"status": "success", "clipboard": clip}
+        return {"status": "success", "clipboard": None}
+
+    async def transfer_file_handler(file_path: str = "", target_device: str = "") -> dict:
+        if not file_path or not target_device:
+            return {"status": "error", "message": "file_path and target_device required"}
+        return await device_mesh_service.prepare_file_transfer(file_path, target_device)
+
+    command_registry.register_handler("send_to_device", send_to_device_handler)
+    command_registry.register_handler("sync_clipboard", sync_clipboard_handler)
+    command_registry.register_handler("transfer_file", transfer_file_handler)
+
     from app.services.knowledge_service import knowledge_service
     command_registry.register_handler("knowledge_summary", lambda: knowledge_service.get_stats())
     command_registry.register_handler("knowledge_search", knowledge_service.search)
@@ -346,6 +531,33 @@ COMMAND_RESPONSES = {
     "list_processes": None,
     "get_system_info": None,
     "get_disk_usage": None,
+    "system_health": "Checking system health.",
+    "get_alerts": "Retrieving alerts.",
+    "get_activity_log": "Pulling activity log.",
+    "get_active_window": "Checking active window.",
+    "get_top_processes": "Listing top processes.",
+    "set_alert_threshold": "Updating alert threshold.",
+    "get_alert_thresholds": "Here are the thresholds.",
+    "morning_briefing": "Assembling your briefing.",
+    "briefing_config": "Updating briefing config.",
+    "wake_word_start": "Listening for wake word.",
+    "wake_word_stop": "Wake word detection stopped.",
+    "wake_word_config": "Updating wake word config.",
+    "run_routine": "Running routine.",
+    "create_routine": "Creating routine.",
+    "list_routines": "Here are your routines.",
+    "delete_routine": "Routine deleted.",
+    "check_email": "Checking your email.",
+    "email_summary": "Summarizing your emails.",
+    "screen_context": "Reading the screen.",
+    "get_notifications": "Here are your notifications.",
+    "get_suggestions": "Let me think of some suggestions.",
+    "dismiss_suggestion": "Suggestion dismissed.",
+    "personality_enhance": "Enhancing that response.",
+    "personality_config": "Updating personality settings.",
+    "send_to_device": "Sending to device.",
+    "sync_clipboard": "Syncing clipboard.",
+    "transfer_file": "Preparing file transfer.",
 }
 
 
@@ -507,6 +719,70 @@ async def websocket_endpoint(websocket: WebSocket):
                 await handle_farewell(websocket)
             elif msg_type == "greeting":
                 await send_greeting(websocket)
+            elif msg_type == "monitoring_snapshot":
+                await handle_monitoring_snapshot(websocket)
+            elif msg_type == "monitoring_history":
+                await handle_monitoring_history(websocket, message)
+            elif msg_type == "monitoring_alerts":
+                await handle_monitoring_alerts(websocket, message)
+            elif msg_type == "monitoring_thresholds":
+                await handle_monitoring_thresholds(websocket)
+            elif msg_type == "monitoring_set_threshold":
+                await handle_monitoring_set_threshold(websocket, message)
+            elif msg_type == "activity_log":
+                await handle_activity_log(websocket, message)
+            elif msg_type == "activity_window":
+                await handle_activity_window(websocket, message)
+            elif msg_type == "activity_processes":
+                await handle_activity_processes(websocket)
+            elif msg_type == "morning_briefing":
+                await handle_morning_briefing(websocket, message)
+            elif msg_type == "briefing_config":
+                await handle_briefing_config(websocket, message)
+            elif msg_type == "wake_word_start":
+                await handle_wake_word_start(websocket)
+            elif msg_type == "wake_word_stop":
+                await handle_wake_word_stop(websocket)
+            elif msg_type == "wake_word_config":
+                await handle_wake_word_config(websocket, message)
+            elif msg_type == "run_routine":
+                await handle_run_routine(websocket, message)
+            elif msg_type == "create_routine":
+                await handle_create_routine(websocket, message)
+            elif msg_type == "list_routines":
+                await handle_list_routines(websocket)
+            elif msg_type == "delete_routine":
+                await handle_delete_routine(websocket, message)
+            elif msg_type == "check_email":
+                await handle_check_email(websocket, message)
+            elif msg_type == "email_summary":
+                await handle_email_summary(websocket, message)
+            elif msg_type == "screen_context":
+                await handle_screen_context(websocket, message)
+            elif msg_type == "get_notifications":
+                await handle_get_notifications(websocket, message)
+            elif msg_type == "get_suggestions":
+                await handle_get_suggestions(websocket)
+            elif msg_type == "dismiss_suggestion":
+                await handle_dismiss_suggestion(websocket, message)
+            elif msg_type == "personality_enhance":
+                await handle_personality_enhance(websocket, message)
+            elif msg_type == "personality_config":
+                await handle_personality_config(websocket, message)
+            elif msg_type == "mesh_register":
+                await handle_device_mesh_register(websocket, message)
+            elif msg_type == "mesh_heartbeat":
+                await handle_device_mesh_heartbeat(websocket, message)
+            elif msg_type == "push_to_device":
+                await handle_push_to_device(websocket, message)
+            elif msg_type == "clipboard_sync":
+                await handle_sync_clipboard(websocket, message)
+            elif msg_type == "transfer_file":
+                await handle_transfer_file(websocket, message)
+            elif msg_type == "transfer_chunk":
+                await handle_transfer_chunk(websocket, message)
+            elif msg_type == "mesh_devices":
+                await handle_device_mesh_devices(websocket)
             else:
                 await broadcast(message, websocket)
 
@@ -2134,3 +2410,435 @@ async def handle_ocr_screenshot(websocket: WebSocket, message: dict):
         "mode": "screenshot",
         "result": result,
     })
+
+
+# ── Monitoring WebSocket Handlers ──────────────────────────────────────────────
+
+async def handle_monitoring_snapshot(websocket: WebSocket):
+    from app.services.monitoring_service import monitoring_service
+    snapshot = await asyncio.to_thread(monitoring_service.get_snapshot)
+    await safe_send(websocket, {
+        "type": "monitoring_snapshot",
+        "data": snapshot,
+    })
+
+
+async def handle_monitoring_history(websocket: WebSocket, message: dict):
+    from app.services.monitoring_service import monitoring_service
+    minutes = message.get("minutes", 60)
+    history = await asyncio.to_thread(monitoring_service.get_history, minutes)
+    await safe_send(websocket, {
+        "type": "monitoring_history",
+        "data": history,
+    })
+
+
+async def handle_monitoring_alerts(websocket: WebSocket, message: dict):
+    from app.services.alert_engine import alert_engine
+    limit = message.get("limit", 20)
+    alerts = await asyncio.to_thread(alert_engine.get_alert_history, limit)
+    await safe_send(websocket, {
+        "type": "monitoring_alerts",
+        "alerts": alerts,
+    })
+
+
+async def handle_monitoring_thresholds(websocket: WebSocket):
+    from app.services.monitoring_service import monitoring_service
+    thresholds = monitoring_service.get_thresholds()
+    await safe_send(websocket, {
+        "type": "monitoring_thresholds",
+        "thresholds": thresholds,
+    })
+
+
+async def handle_monitoring_set_threshold(websocket: WebSocket, message: dict):
+    from app.services.monitoring_service import monitoring_service
+    metric = message.get("metric", "")
+    value = message.get("value", 0)
+    monitoring_service.set_threshold(metric, value)
+    await safe_send(websocket, {
+        "type": "monitoring_threshold_set",
+        "metric": metric,
+        "value": value,
+        "thresholds": monitoring_service.get_thresholds(),
+    })
+
+
+async def handle_activity_log(websocket: WebSocket, message: dict):
+    from app.services.activity_logger import activity_logger
+    limit = message.get("limit", 20)
+    activity = await asyncio.to_thread(activity_logger.get_recent_activity, limit)
+    await safe_send(websocket, {
+        "type": "activity_log",
+        "activity": activity,
+    })
+
+
+async def handle_activity_window(websocket: WebSocket, message: dict):
+    from app.services.activity_logger import activity_logger
+    minutes = message.get("minutes", 60)
+    windows = await asyncio.to_thread(activity_logger.get_active_window_history, minutes)
+    await safe_send(websocket, {
+        "type": "activity_window_history",
+        "windows": windows,
+    })
+
+
+async def handle_activity_processes(websocket: WebSocket):
+    from app.services.activity_logger import activity_logger
+    processes = await asyncio.to_thread(activity_logger.get_top_processes)
+    await safe_send(websocket, {
+        "type": "activity_processes",
+        "processes": processes,
+    })
+
+
+# ── Briefing WebSocket Handlers ────────────────────────────────────────────────
+
+async def handle_morning_briefing(websocket: WebSocket, message: dict):
+    from app.services.briefing_service import briefing_service
+    include_tts = message.get("include_tts", False)
+
+    await safe_send(websocket, {
+        "type": "briefing_status",
+        "status": "generating",
+        "message": "Assembling your briefing...",
+    })
+
+    result = await briefing_service.generate_briefing(include_tts=include_tts)
+
+    await safe_send(websocket, {
+        "type": "briefing_result",
+        "data": result,
+    })
+
+
+async def handle_briefing_config(websocket: WebSocket, message: dict):
+    from app.services.briefing_service import briefing_service
+    sources = message.get("sources", {})
+    if sources:
+        briefing_service.configure(sources)
+    await safe_send(websocket, {
+        "type": "briefing_config",
+        "config": briefing_service.get_config(),
+    })
+
+
+# ── Wake Word WebSocket Handlers ───────────────────────────────────────────────
+
+async def handle_wake_word_start(websocket: WebSocket):
+    from app.services.wake_word_service import wake_word_service
+
+    async def on_wake(text: str):
+        await safe_send(websocket, {
+            "type": "wake_word_detected",
+            "text": text,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+    wake_word_service.set_wake_callback(on_wake)
+    result = await wake_word_service.start()
+    await safe_send(websocket, {
+        "type": "wake_word_result",
+        "result": result,
+    })
+
+
+async def handle_wake_word_stop(websocket: WebSocket):
+    from app.services.wake_word_service import wake_word_service
+    result = await wake_word_service.stop()
+    await safe_send(websocket, {
+        "type": "wake_word_result",
+        "result": result,
+    })
+
+
+async def handle_wake_word_config(websocket: WebSocket, message: dict):
+    from app.services.wake_word_service import wake_word_service
+    phrases = message.get("phrases")
+    sensitivity = message.get("sensitivity")
+
+    if phrases:
+        wake_word_service.set_wake_phrases(phrases)
+    if sensitivity is not None:
+        wake_word_service.set_sensitivity(float(sensitivity))
+
+    await safe_send(websocket, {
+        "type": "wake_word_config",
+        "config": wake_word_service.get_config(),
+    })
+
+
+# ── Routine WebSocket Handlers ─────────────────────────────────────────────────
+
+async def handle_run_routine(websocket: WebSocket, message: dict):
+    from app.services.routine_service import routine_service
+
+    async def on_progress(info):
+        await safe_send(websocket, {
+            "type": "routine_progress",
+            "data": info,
+        })
+
+    routine_service.set_progress_callback(on_progress)
+    name = message.get("name", "")
+
+    await safe_send(websocket, {
+        "type": "routine_started",
+        "name": name,
+    })
+
+    result = await routine_service.run(name)
+
+    await safe_send(websocket, {
+        "type": "routine_result",
+        "data": result,
+    })
+
+
+async def handle_create_routine(websocket: WebSocket, message: dict):
+    from app.services.routine_service import routine_service
+    import json as _json
+
+    name = message.get("name", "")
+    description = message.get("description", "")
+    steps = message.get("steps", [])
+    trigger_phrase = message.get("trigger_phrase", "")
+
+    if isinstance(steps, str):
+        try:
+            steps = _json.loads(steps)
+        except _json.JSONDecodeError:
+            steps = []
+
+    result = routine_service.create(name, description, steps, trigger_phrase)
+    await safe_send(websocket, {
+        "type": "routine_created",
+        "data": result,
+    })
+
+
+async def handle_list_routines(websocket: WebSocket):
+    from app.services.routine_service import routine_service
+    routines = routine_service.get_all()
+    await safe_send(websocket, {
+        "type": "routine_list",
+        "routines": routines,
+    })
+
+
+async def handle_delete_routine(websocket: WebSocket, message: dict):
+    from app.services.routine_service import routine_service
+    name = message.get("name", "")
+    result = routine_service.delete(name)
+    await safe_send(websocket, {
+        "type": "routine_deleted",
+        "data": result,
+    })
+
+
+# ── Email/Context/Notification WebSocket Handlers ──────────────────────────────
+
+async def handle_check_email(websocket: WebSocket, message: dict):
+    from app.services.email_service import email_service
+    limit = message.get("limit", 5)
+    query = message.get("query", "")
+    emails = await email_service.get_recent(limit=limit, query=query)
+    await safe_send(websocket, {
+        "type": "email_list",
+        "emails": emails,
+    })
+
+
+async def handle_email_summary(websocket: WebSocket, message: dict):
+    from app.services.email_service import email_service
+    limit = message.get("limit", 5)
+    summary = await email_service.get_summary(limit=limit)
+    await safe_send(websocket, {
+        "type": "email_summary",
+        "summary": summary,
+    })
+
+
+async def handle_screen_context(websocket: WebSocket, message: dict):
+    from app.services.screen_context_service import screen_context_service
+    prompt = message.get("prompt", "")
+    result = await screen_context_service.capture_and_summarize(prompt)
+    await safe_send(websocket, {
+        "type": "screen_context",
+        "data": result,
+    })
+
+
+async def handle_get_notifications(websocket: WebSocket, message: dict):
+    from app.services.notification_service import notification_service
+    limit = message.get("limit", 20)
+    notifications = notification_service.get_recent(limit=limit)
+    await safe_send(websocket, {
+        "type": "notification_list",
+        "notifications": notifications,
+    })
+
+
+# ── Suggestion WebSocket Handlers ──────────────────────────────────────────────
+
+async def handle_get_suggestions(websocket: WebSocket):
+    from app.services.suggestion_engine import suggestion_engine
+    from app.services.monitoring_service import monitoring_service
+
+    monitoring_data = monitoring_service.get_snapshot()
+    suggestions = await suggestion_engine.evaluate(monitoring_data=monitoring_data)
+    await safe_send(websocket, {
+        "type": "suggestions",
+        "suggestions": suggestions,
+    })
+
+
+async def handle_dismiss_suggestion(websocket: WebSocket, message: dict):
+    from app.services.suggestion_engine import suggestion_engine
+    suggestion_id = message.get("suggestion_id", "")
+    suggestion_engine.dismiss(suggestion_id)
+    await safe_send(websocket, {
+        "type": "suggestion_dismissed",
+        "suggestion_id": suggestion_id,
+    })
+
+
+# ── Personality WebSocket Handlers ─────────────────────────────────────────────
+
+async def handle_personality_enhance(websocket: WebSocket, message: dict):
+    from app.services.personality_enhancer import personality_enhancer
+    text = message.get("text", "")
+    context = message.get("context", "")
+    enhanced = personality_enhancer.enhance_response(text, context)
+    await safe_send(websocket, {
+        "type": "personality_enhanced",
+        "original": text,
+        "enhanced": enhanced,
+    })
+
+
+async def handle_personality_config(websocket: WebSocket, message: dict):
+    from app.services.personality_enhancer import personality_enhancer
+    formality = message.get("formality")
+    quip_frequency = message.get("quip_frequency")
+    enabled = message.get("enabled")
+
+    if formality is not None:
+        personality_enhancer.set_formality(float(formality))
+    if quip_frequency is not None:
+        personality_enhancer.set_quip_frequency(float(quip_frequency))
+    if enabled is not None:
+        personality_enhancer.set_enabled(bool(enabled))
+
+    await safe_send(websocket, {
+        "type": "personality_config",
+        "config": personality_enhancer.get_config(),
+    })
+
+
+# ── Device Mesh WebSocket Handlers ─────────────────────────────────────────────
+
+async def handle_device_mesh_register(websocket: WebSocket, message: dict):
+    from app.services.device_mesh_service import device_mesh_service
+    device_id = message.get("device_id", "")
+    device_info = message.get("device", {})
+    if device_id:
+        device_mesh_service.register_device(device_id, device_info)
+    await safe_send(websocket, {
+        "type": "mesh_registered",
+        "device_id": device_id,
+    })
+
+
+async def handle_device_mesh_heartbeat(websocket: WebSocket, message: dict):
+    from app.services.device_mesh_service import device_mesh_service
+    device_id = message.get("device_id", "")
+    if device_id:
+        device_mesh_service.heartbeat(device_id)
+    await safe_send(websocket, {
+        "type": "mesh_heartbeat_ack",
+    })
+
+
+async def handle_push_to_device(websocket: WebSocket, message: dict):
+    from app.services.device_mesh_service import device_mesh_service
+    target = message.get("target_device", "")
+    content = message.get("content", "")
+    if target and content:
+        device_mesh_service.queue_message(target, {
+            "type": "push_message",
+            "content": content,
+            "from_device": message.get("device_id", "pc"),
+        })
+    await safe_send(websocket, {
+        "type": "push_queued",
+        "target_device": target,
+    })
+
+
+async def handle_sync_clipboard(websocket: WebSocket, message: dict):
+    from app.services.device_mesh_service import device_mesh_service
+    content = message.get("content")
+    source = message.get("device_id", "pc")
+
+    if content is not None:
+        device_mesh_service.update_clipboard(content, source)
+
+    clip = device_mesh_service.get_clipboard()
+    await safe_send(websocket, {
+        "type": "clipboard_sync",
+        "clipboard": clip,
+    })
+
+
+async def handle_transfer_file(websocket: WebSocket, message: dict):
+    from app.services.device_mesh_service import device_mesh_service
+    file_path = message.get("file_path", "")
+    target = message.get("target_device", "")
+
+    result = await device_mesh_service.prepare_file_transfer(file_path, target)
+    await safe_send(websocket, {
+        "type": "transfer_ready",
+        "data": result,
+    })
+
+
+async def handle_transfer_chunk(websocket: WebSocket, message: dict):
+    from app.services.device_mesh_service import device_mesh_service
+    transfer_id = message.get("transfer_id", "")
+    offset = message.get("offset", 0)
+    chunk_size = message.get("chunk_size", 65536)
+
+    chunk = await device_mesh_service.read_file_chunk(transfer_id, offset, chunk_size)
+    await safe_send(websocket, {
+        "type": "transfer_chunk",
+        "transfer_id": transfer_id,
+        "data": chunk,
+    })
+
+
+async def handle_device_mesh_devices(websocket: WebSocket):
+    from app.services.device_mesh_service import device_mesh_service
+    devices = device_mesh_service.get_devices()
+    await safe_send(websocket, {
+        "type": "mesh_devices",
+        "devices": devices,
+    })
+
+
+# ── Monitoring Alert Broadcast ─────────────────────────────────────────────────
+
+async def _monitoring_alert_callback(alert: dict):
+    await broadcast({
+        "type": "system_alert",
+        "alert": alert,
+    })
+
+
+def _setup_monitoring_broadcast():
+    from app.services.monitoring_service import monitoring_service
+    from app.services.alert_engine import alert_engine
+    monitoring_service.add_listener(_monitoring_alert_callback)
+    alert_engine.set_notification_callback(_monitoring_alert_callback)
