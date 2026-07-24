@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -97,8 +98,8 @@
             border-radius: 50%;
             animation: glow 3s ease-in-out infinite, breatheFast 1.5s ease-in-out infinite;
             box-shadow: 0 0 20px #00ffff,
-                        0 0 40px #00ffff,
-                        0 0 60px #00d4ff;
+                0 0 40px #00ffff,
+                0 0 60px #00d4ff;
             transition: all 0.3s ease;
         }
 
@@ -127,14 +128,49 @@
             transition: all 0.3s ease;
         }
 
-        .data-point:nth-child(1) { top: 10px; left: 50%; transform: translateX(-50%); }
-        .data-point:nth-child(2) { top: 25%; right: 25px; }
-        .data-point:nth-child(3) { top: 50%; right: 10px; transform: translateY(-50%); }
-        .data-point:nth-child(4) { bottom: 25%; right: 25px; }
-        .data-point:nth-child(5) { bottom: 10px; left: 50%; transform: translateX(-50%); }
-        .data-point:nth-child(6) { bottom: 25%; left: 25px; }
-        .data-point:nth-child(7) { top: 50%; left: 10px; transform: translateY(-50%); }
-        .data-point:nth-child(8) { top: 25%; left: 25px; }
+        .data-point:nth-child(1) {
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .data-point:nth-child(2) {
+            top: 25%;
+            right: 25px;
+        }
+
+        .data-point:nth-child(3) {
+            top: 50%;
+            right: 10px;
+            transform: translateY(-50%);
+        }
+
+        .data-point:nth-child(4) {
+            bottom: 25%;
+            right: 25px;
+        }
+
+        .data-point:nth-child(5) {
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .data-point:nth-child(6) {
+            bottom: 25%;
+            left: 25px;
+        }
+
+        .data-point:nth-child(7) {
+            top: 50%;
+            left: 10px;
+            transform: translateY(-50%);
+        }
+
+        .data-point:nth-child(8) {
+            top: 25%;
+            left: 25px;
+        }
 
         .status-indicator {
             position: absolute;
@@ -145,10 +181,29 @@
             transition: all 0.3s ease;
         }
 
-        .status-indicator.top { top: 25px; left: 50%; transform: translateX(-50%); }
-        .status-indicator.right { top: 50%; right: 25px; transform: translateY(-50%); }
-        .status-indicator.bottom { bottom: 25px; left: 50%; transform: translateX(-50%); }
-        .status-indicator.left { top: 50%; left: 25px; transform: translateY(-50%); }
+        .status-indicator.top {
+            top: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .status-indicator.right {
+            top: 50%;
+            right: 25px;
+            transform: translateY(-50%);
+        }
+
+        .status-indicator.bottom {
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .status-indicator.left {
+            top: 50%;
+            left: 25px;
+            transform: translateY(-50%);
+        }
 
         .glow {
             position: absolute;
@@ -199,65 +254,162 @@
         }
 
         @keyframes rotate {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         @keyframes rotateReverse {
-            from { transform: rotate(360deg); }
-            to { transform: rotate(0deg); }
+            from {
+                transform: rotate(360deg);
+            }
+
+            to {
+                transform: rotate(0deg);
+            }
         }
 
         @keyframes breathe {
-            0%, 100% { transform: scale(1); opacity: 0.8; }
-            50% { transform: scale(1.08); opacity: 1; }
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+
+            50% {
+                transform: scale(1.08);
+                opacity: 1;
+            }
         }
 
         @keyframes breatheSlow {
-            0%, 100% { transform: scale(1); opacity: 0.6; }
-            50% { transform: scale(1.03); opacity: 0.9; }
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 0.6;
+            }
+
+            50% {
+                transform: scale(1.03);
+                opacity: 0.9;
+            }
         }
 
         @keyframes breatheMedium {
-            0%, 100% { transform: scale(1); opacity: 0.7; }
-            50% { transform: scale(1.05); opacity: 1; }
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 0.7;
+            }
+
+            50% {
+                transform: scale(1.05);
+                opacity: 1;
+            }
         }
 
         @keyframes breatheFast {
-            0%, 100% { transform: scale(1); opacity: 0.8; }
-            50% { transform: scale(1.06); opacity: 1; }
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+
+            50% {
+                transform: scale(1.06);
+                opacity: 1;
+            }
         }
 
         @keyframes breatheGlow {
-            0%, 100% { opacity: 0.15; transform: scale(1); }
-            50% { opacity: 0.35; transform: scale(1.1); }
+
+            0%,
+            100% {
+                opacity: 0.15;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.35;
+                transform: scale(1.1);
+            }
         }
 
         @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.05);
+            }
         }
 
         @keyframes popIn {
-            0% { transform: scale(0.5); opacity: 0; }
-            70% { transform: scale(1.15); opacity: 1; }
-            100% { transform: scale(1); opacity: 1; }
+            0% {
+                transform: scale(0.5);
+                opacity: 0;
+            }
+
+            70% {
+                transform: scale(1.15);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
         }
 
         @keyframes popRing {
-            0% { transform: scale(0.8); opacity: 1; border-width: 4px; }
-            100% { transform: scale(1.5); opacity: 0; border-width: 1px; }
+            0% {
+                transform: scale(0.8);
+                opacity: 1;
+                border-width: 4px;
+            }
+
+            100% {
+                transform: scale(1.5);
+                opacity: 0;
+                border-width: 1px;
+            }
         }
 
         @keyframes ripple {
-            0% { transform: scale(0.5); opacity: 1; }
-            100% { transform: scale(2); opacity: 0; }
+            0% {
+                transform: scale(0.5);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(2);
+                opacity: 0;
+            }
         }
 
         @keyframes coreFlash {
-            0% { box-shadow: 0 0 0px currentColor; }
-            50% { box-shadow: 0 0 80px currentColor, 0 0 120px currentColor; }
-            100% { box-shadow: 0 0 20px currentColor; }
+            0% {
+                box-shadow: 0 0 0px currentColor;
+            }
+
+            50% {
+                box-shadow: 0 0 80px currentColor, 0 0 120px currentColor;
+            }
+
+            100% {
+                box-shadow: 0 0 20px currentColor;
+            }
         }
 
         .avatar-wrapper.pop-active {
@@ -283,161 +435,472 @@
         }
 
         @keyframes glow {
-            0%, 100% { opacity: 0.5; box-shadow: 0 0 20px #00ffff; }
-            50% { opacity: 1; box-shadow: 0 0 40px #00ffff, 0 0 60px #00d4ff; }
+
+            0%,
+            100% {
+                opacity: 0.5;
+                box-shadow: 0 0 20px #00ffff;
+            }
+
+            50% {
+                opacity: 1;
+                box-shadow: 0 0 40px #00ffff, 0 0 60px #00d4ff;
+            }
         }
 
         @keyframes glowPulse {
-            0%, 100% { opacity: 0.2; }
-            50% { opacity: 0.4; }
+
+            0%,
+            100% {
+                opacity: 0.2;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
         }
 
         @keyframes fadeInOut {
-            0%, 100% { opacity: 0; }
-            50% { opacity: 0.8; }
+
+            0%,
+            100% {
+                opacity: 0;
+            }
+
+            50% {
+                opacity: 0.8;
+            }
         }
 
         /* IDLE - Slow breathing, calm */
-        .idle .ring-outer { animation: rotate 12s linear infinite, breatheSlow 4s ease-in-out infinite; }
-        .idle .ring-middle { animation: rotateReverse 10s linear infinite, breatheMedium 3.5s ease-in-out infinite; }
-        .idle .ring-inner { animation: breatheFast 3s ease-in-out infinite; }
-        .idle .core-bg { animation: breathe 4s ease-in-out infinite; }
-        .idle .core-reactor { animation: breatheMedium 3s ease-in-out infinite; }
-        .idle .core-center { animation: glowIdle 4s ease-in-out infinite; }
-        .idle .glow { animation: breatheGlow 5s ease-in-out infinite; }
+        .idle .ring-outer {
+            animation: rotate 12s linear infinite, breatheSlow 4s ease-in-out infinite;
+        }
+
+        .idle .ring-middle {
+            animation: rotateReverse 10s linear infinite, breatheMedium 3.5s ease-in-out infinite;
+        }
+
+        .idle .ring-inner {
+            animation: breatheFast 3s ease-in-out infinite;
+        }
+
+        .idle .core-bg {
+            animation: breathe 4s ease-in-out infinite;
+        }
+
+        .idle .core-reactor {
+            animation: breatheMedium 3s ease-in-out infinite;
+        }
+
+        .idle .core-center {
+            animation: glowIdle 4s ease-in-out infinite;
+        }
+
+        .idle .glow {
+            animation: breatheGlow 5s ease-in-out infinite;
+        }
 
         @keyframes glowIdle {
-            0%, 100% { opacity: 0.4; box-shadow: 0 0 15px #00d4ff, 0 0 30px #00d4ff; }
-            50% { opacity: 0.8; box-shadow: 0 0 25px #00ffff, 0 0 50px #00d4ff; }
+
+            0%,
+            100% {
+                opacity: 0.4;
+                box-shadow: 0 0 15px #00d4ff, 0 0 30px #00d4ff;
+            }
+
+            50% {
+                opacity: 0.8;
+                box-shadow: 0 0 25px #00ffff, 0 0 50px #00d4ff;
+            }
         }
 
         /* LISTENING - Active scanning, alert */
-        .listening .ring-outer { animation: rotate 3s linear infinite, breatheSlow 2s ease-in-out infinite; }
-        .listening .ring-middle { animation: rotateReverse 2s linear infinite, breatheMedium 1.5s ease-in-out infinite; }
-        .listening .ring-inner { animation: breatheFast 1s ease-in-out infinite, pulseRing 0.8s ease-in-out infinite; }
-        .listening .core-bg { animation: breathe 1.5s ease-in-out infinite; }
-        .listening .core-reactor { animation: breatheMedium 1s ease-in-out infinite; }
-        .listening .core-center { animation: glowListening 0.8s ease-in-out infinite; }
-        .listening .glow { animation: breatheGlow 1.5s ease-in-out infinite; }
-        .listening .scan-line { animation: rotate 1.5s linear infinite; opacity: 0.9; }
-        .listening .data-point { animation: dataPulse 0.6s ease-in-out infinite; }
+        .listening .ring-outer {
+            animation: rotate 3s linear infinite, breatheSlow 2s ease-in-out infinite;
+        }
+
+        .listening .ring-middle {
+            animation: rotateReverse 2s linear infinite, breatheMedium 1.5s ease-in-out infinite;
+        }
+
+        .listening .ring-inner {
+            animation: breatheFast 1s ease-in-out infinite, pulseRing 0.8s ease-in-out infinite;
+        }
+
+        .listening .core-bg {
+            animation: breathe 1.5s ease-in-out infinite;
+        }
+
+        .listening .core-reactor {
+            animation: breatheMedium 1s ease-in-out infinite;
+        }
+
+        .listening .core-center {
+            animation: glowListening 0.8s ease-in-out infinite;
+        }
+
+        .listening .glow {
+            animation: breatheGlow 1.5s ease-in-out infinite;
+        }
+
+        .listening .scan-line {
+            animation: rotate 1.5s linear infinite;
+            opacity: 0.9;
+        }
+
+        .listening .data-point {
+            animation: dataPulse 0.6s ease-in-out infinite;
+        }
 
         @keyframes glowListening {
-            0%, 100% { opacity: 0.6; box-shadow: 0 0 20px #00ff88, 0 0 40px #00ff88; }
-            50% { opacity: 1; box-shadow: 0 0 40px #00ff88, 0 0 80px #00ff88, 0 0 120px #00cc6a; }
+
+            0%,
+            100% {
+                opacity: 0.6;
+                box-shadow: 0 0 20px #00ff88, 0 0 40px #00ff88;
+            }
+
+            50% {
+                opacity: 1;
+                box-shadow: 0 0 40px #00ff88, 0 0 80px #00ff88, 0 0 120px #00cc6a;
+            }
         }
 
         @keyframes pulseRing {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.1);
+            }
         }
 
         @keyframes dataPulse {
-            0%, 100% { opacity: 0.4; transform: scale(1); }
-            50% { opacity: 1; transform: scale(1.5); }
+
+            0%,
+            100% {
+                opacity: 0.4;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 1;
+                transform: scale(1.5);
+            }
         }
 
         /* THINKING - Spinning, calculating */
-        .thinking .ring-outer { animation: rotate 1.5s linear infinite, breatheSlow 1s ease-in-out infinite; }
-        .thinking .ring-middle { animation: rotateReverse 1s linear infinite, breatheMedium 0.8s ease-in-out infinite; }
-        .thinking .ring-inner { animation: rotate 2s linear infinite, breatheFast 0.6s ease-in-out infinite; }
-        .thinking .core-bg { animation: pulse 0.4s ease-in-out infinite, rotate 3s linear infinite; }
-        .thinking .core-reactor { animation: breatheMedium 0.5s ease-in-out infinite, rotateReverse 2s linear infinite; }
-        .thinking .core-center { animation: glowThinking 0.5s ease-in-out infinite; }
-        .thinking .glow { animation: breatheGlow 0.8s ease-in-out infinite; }
-        .thinking .data-point { animation: thinkingDot 0.4s ease-in-out infinite; }
+        .thinking .ring-outer {
+            animation: rotate 1.5s linear infinite, breatheSlow 1s ease-in-out infinite;
+        }
+
+        .thinking .ring-middle {
+            animation: rotateReverse 1s linear infinite, breatheMedium 0.8s ease-in-out infinite;
+        }
+
+        .thinking .ring-inner {
+            animation: rotate 2s linear infinite, breatheFast 0.6s ease-in-out infinite;
+        }
+
+        .thinking .core-bg {
+            animation: pulse 0.4s ease-in-out infinite, rotate 3s linear infinite;
+        }
+
+        .thinking .core-reactor {
+            animation: breatheMedium 0.5s ease-in-out infinite, rotateReverse 2s linear infinite;
+        }
+
+        .thinking .core-center {
+            animation: glowThinking 0.5s ease-in-out infinite;
+        }
+
+        .thinking .glow {
+            animation: breatheGlow 0.8s ease-in-out infinite;
+        }
+
+        .thinking .data-point {
+            animation: thinkingDot 0.4s ease-in-out infinite;
+        }
 
         @keyframes glowThinking {
-            0%, 100% { opacity: 0.7; box-shadow: 0 0 25px #ffaa00, 0 0 50px #ffaa00; transform: scale(1); }
-            25% { transform: scale(1.1); }
-            50% { opacity: 1; box-shadow: 0 0 50px #ffaa00, 0 0 100px #ffaa00, 0 0 150px #cc8800; transform: scale(0.95); }
-            75% { transform: scale(1.05); }
+
+            0%,
+            100% {
+                opacity: 0.7;
+                box-shadow: 0 0 25px #ffaa00, 0 0 50px #ffaa00;
+                transform: scale(1);
+            }
+
+            25% {
+                transform: scale(1.1);
+            }
+
+            50% {
+                opacity: 1;
+                box-shadow: 0 0 50px #ffaa00, 0 0 100px #ffaa00, 0 0 150px #cc8800;
+                transform: scale(0.95);
+            }
+
+            75% {
+                transform: scale(1.05);
+            }
         }
 
         @keyframes thinkingDot {
-            0%, 100% { opacity: 0.3; transform: scale(0.8); }
-            50% { opacity: 1; transform: scale(1.8); }
+
+            0%,
+            100% {
+                opacity: 0.3;
+                transform: scale(0.8);
+            }
+
+            50% {
+                opacity: 1;
+                transform: scale(1.8);
+            }
         }
 
         /* SPEAKING - Waveform, rhythmic */
-        .speaking .ring-outer { animation: rotate 6s linear infinite, breatheSlow 2s ease-in-out infinite; }
-        .speaking .ring-middle { animation: rotateReverse 4s linear infinite, breatheMedium 1.5s ease-in-out infinite; }
-        .speaking .ring-inner { animation: breatheFast 1s ease-in-out infinite; }
-        .speaking .core-bg { animation: breathe 1.2s ease-in-out infinite; }
-        .speaking .core-reactor { animation: breatheMedium 0.8s ease-in-out infinite; }
-        .speaking .core-center { animation: glowSpeaking 0.6s ease-in-out infinite; }
-        .speaking .glow { animation: breatheGlowSpeaking 0.8s ease-in-out infinite; }
-        .speaking .data-point { animation: speakingDot 0.5s ease-in-out infinite; }
+        .speaking .ring-outer {
+            animation: rotate 6s linear infinite, breatheSlow 2s ease-in-out infinite;
+        }
 
-        .speaking .ring-outer.word-pulse { animation: wordPulseOuter 0.3s ease-out; }
-        .speaking .ring-middle.word-pulse { animation: wordPulseMiddle 0.3s ease-out; }
-        .speaking .ring-inner.word-pulse { animation: wordPulseInner 0.3s ease-out; }
-        .speaking .core-bg.word-pulse { animation: wordPulseCore 0.3s ease-out; }
-        .speaking .core-reactor.word-pulse { animation: wordPulseReactor 0.3s ease-out; }
-        .speaking .core-center.word-pulse { animation: wordPulseCenter 0.3s ease-out; }
-        .speaking .glow.word-pulse { animation: wordPulseGlow 0.3s ease-out; }
+        .speaking .ring-middle {
+            animation: rotateReverse 4s linear infinite, breatheMedium 1.5s ease-in-out infinite;
+        }
+
+        .speaking .ring-inner {
+            animation: breatheFast 1s ease-in-out infinite;
+        }
+
+        .speaking .core-bg {
+            animation: breathe 1.2s ease-in-out infinite;
+        }
+
+        .speaking .core-reactor {
+            animation: breatheMedium 0.8s ease-in-out infinite;
+        }
+
+        .speaking .core-center {
+            animation: glowSpeaking 0.6s ease-in-out infinite;
+        }
+
+        .speaking .glow {
+            animation: breatheGlowSpeaking 0.8s ease-in-out infinite;
+        }
+
+        .speaking .data-point {
+            animation: speakingDot 0.5s ease-in-out infinite;
+        }
+
+        .speaking .ring-outer.word-pulse {
+            animation: wordPulseOuter 0.3s ease-out;
+        }
+
+        .speaking .ring-middle.word-pulse {
+            animation: wordPulseMiddle 0.3s ease-out;
+        }
+
+        .speaking .ring-inner.word-pulse {
+            animation: wordPulseInner 0.3s ease-out;
+        }
+
+        .speaking .core-bg.word-pulse {
+            animation: wordPulseCore 0.3s ease-out;
+        }
+
+        .speaking .core-reactor.word-pulse {
+            animation: wordPulseReactor 0.3s ease-out;
+        }
+
+        .speaking .core-center.word-pulse {
+            animation: wordPulseCenter 0.3s ease-out;
+        }
+
+        .speaking .glow.word-pulse {
+            animation: wordPulseGlow 0.3s ease-out;
+        }
 
         @keyframes wordPulseOuter {
-            0% { transform: scale(1); border-color: rgba(0, 255, 255, 0.6); }
-            50% { transform: scale(1.05); border-color: rgba(0, 255, 255, 1); }
-            100% { transform: scale(1); border-color: rgba(0, 255, 255, 0.6); }
+            0% {
+                transform: scale(1);
+                border-color: rgba(0, 255, 255, 0.6);
+            }
+
+            50% {
+                transform: scale(1.05);
+                border-color: rgba(0, 255, 255, 1);
+            }
+
+            100% {
+                transform: scale(1);
+                border-color: rgba(0, 255, 255, 0.6);
+            }
         }
 
         @keyframes wordPulseMiddle {
-            0% { transform: scale(1); border-color: rgba(0, 255, 255, 0.8); }
-            50% { transform: scale(1.08); border-color: rgba(0, 255, 255, 1); }
-            100% { transform: scale(1); border-color: rgba(0, 255, 255, 0.8); }
+            0% {
+                transform: scale(1);
+                border-color: rgba(0, 255, 255, 0.8);
+            }
+
+            50% {
+                transform: scale(1.08);
+                border-color: rgba(0, 255, 255, 1);
+            }
+
+            100% {
+                transform: scale(1);
+                border-color: rgba(0, 255, 255, 0.8);
+            }
         }
 
         @keyframes wordPulseInner {
-            0% { transform: scale(1); border-color: rgba(0, 255, 255, 0.4); }
-            50% { transform: scale(1.12); border-color: rgba(0, 255, 255, 0.9); }
-            100% { transform: scale(1); border-color: rgba(0, 255, 255, 0.4); }
+            0% {
+                transform: scale(1);
+                border-color: rgba(0, 255, 255, 0.4);
+            }
+
+            50% {
+                transform: scale(1.12);
+                border-color: rgba(0, 255, 255, 0.9);
+            }
+
+            100% {
+                transform: scale(1);
+                border-color: rgba(0, 255, 255, 0.4);
+            }
         }
 
         @keyframes wordPulseCore {
-            0% { transform: scale(1); background: rgba(0, 255, 255, 0.05); }
-            50% { transform: scale(1.15); background: rgba(0, 255, 255, 0.15); }
-            100% { transform: scale(1); background: rgba(0, 255, 255, 0.05); }
+            0% {
+                transform: scale(1);
+                background: rgba(0, 255, 255, 0.05);
+            }
+
+            50% {
+                transform: scale(1.15);
+                background: rgba(0, 255, 255, 0.15);
+            }
+
+            100% {
+                transform: scale(1);
+                background: rgba(0, 255, 255, 0.05);
+            }
         }
 
         @keyframes wordPulseReactor {
-            0% { transform: scale(1); background: rgba(0, 255, 255, 0.15); }
-            50% { transform: scale(1.2); background: rgba(0, 255, 255, 0.3); }
-            100% { transform: scale(1); background: rgba(0, 255, 255, 0.15); }
+            0% {
+                transform: scale(1);
+                background: rgba(0, 255, 255, 0.15);
+            }
+
+            50% {
+                transform: scale(1.2);
+                background: rgba(0, 255, 255, 0.3);
+            }
+
+            100% {
+                transform: scale(1);
+                background: rgba(0, 255, 255, 0.15);
+            }
         }
 
         @keyframes wordPulseCenter {
-            0% { transform: scale(1); box-shadow: 0 0 20px #00ffff; }
-            50% { transform: scale(1.3); box-shadow: 0 0 50px #00ffff, 0 0 100px #00ffff; }
-            100% { transform: scale(1); box-shadow: 0 0 20px #00ffff; }
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 20px #00ffff;
+            }
+
+            50% {
+                transform: scale(1.3);
+                box-shadow: 0 0 50px #00ffff, 0 0 100px #00ffff;
+            }
+
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 20px #00ffff;
+            }
         }
 
         @keyframes wordPulseGlow {
-            0% { transform: scale(1); opacity: 0.2; }
-            50% { transform: scale(1.3); opacity: 0.6; }
-            100% { transform: scale(1); opacity: 0.2; }
+            0% {
+                transform: scale(1);
+                opacity: 0.2;
+            }
+
+            50% {
+                transform: scale(1.3);
+                opacity: 0.6;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 0.2;
+            }
         }
 
         @keyframes glowSpeaking {
-            0%, 100% { opacity: 0.5; box-shadow: 0 0 20px #00ffff, 0 0 40px #00ffff; }
-            50% { opacity: 1; box-shadow: 0 0 50px #00ffff, 0 0 100px #00ffff, 0 0 150px #00cccc; }
+
+            0%,
+            100% {
+                opacity: 0.5;
+                box-shadow: 0 0 20px #00ffff, 0 0 40px #00ffff;
+            }
+
+            50% {
+                opacity: 1;
+                box-shadow: 0 0 50px #00ffff, 0 0 100px #00ffff, 0 0 150px #00cccc;
+            }
         }
 
         @keyframes breatheGlowSpeaking {
-            0%, 100% { opacity: 0.2; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.15); }
+
+            0%,
+            100% {
+                opacity: 0.2;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.5;
+                transform: scale(1.15);
+            }
         }
 
         @keyframes waveExpand {
-            0%, 100% { transform: scale(1); border-color: rgba(0, 255, 255, 0.4); }
-            50% { transform: scale(1.08); border-color: rgba(0, 255, 255, 0.8); }
+
+            0%,
+            100% {
+                transform: scale(1);
+                border-color: rgba(0, 255, 255, 0.4);
+            }
+
+            50% {
+                transform: scale(1.08);
+                border-color: rgba(0, 255, 255, 0.8);
+            }
         }
 
         @keyframes speakingDot {
-            0%, 100% { opacity: 0.5; transform: scale(1) translateY(0); }
-            25% { transform: scale(1.3) translateY(-3px); }
-            75% { transform: scale(1.3) translateY(3px); }
+
+            0%,
+            100% {
+                opacity: 0.5;
+                transform: scale(1) translateY(0);
+            }
+
+            25% {
+                transform: scale(1.3) translateY(-3px);
+            }
+
+            75% {
+                transform: scale(1.3) translateY(3px);
+            }
         }
 
         .word-display {
@@ -460,109 +923,352 @@
         }
 
         /* ERROR - Warning, flashing, urgent */
-        .error .ring-outer { animation: errorRotate 0.2s linear infinite, errorShake 0.1s linear infinite; }
-        .error .ring-middle { animation: errorRotateReverse 0.15s linear infinite, errorShake 0.1s linear infinite; }
-        .error .ring-inner { animation: errorFlash 0.2s ease-in-out infinite; }
-        .error .core-bg { animation: errorFlash 0.15s ease-in-out infinite; }
-        .error .core-reactor { animation: errorFlash 0.2s ease-in-out infinite; }
-        .error .core-center { animation: glowError 0.3s ease-in-out infinite; }
-        .error .glow { animation: glowErrorPulse 0.4s ease-in-out infinite; }
-        .error .data-point { animation: errorDot 0.2s ease-in-out infinite; }
+        .error .ring-outer {
+            animation: errorRotate 0.2s linear infinite, errorShake 0.1s linear infinite;
+        }
+
+        .error .ring-middle {
+            animation: errorRotateReverse 0.15s linear infinite, errorShake 0.1s linear infinite;
+        }
+
+        .error .ring-inner {
+            animation: errorFlash 0.2s ease-in-out infinite;
+        }
+
+        .error .core-bg {
+            animation: errorFlash 0.15s ease-in-out infinite;
+        }
+
+        .error .core-reactor {
+            animation: errorFlash 0.2s ease-in-out infinite;
+        }
+
+        .error .core-center {
+            animation: glowError 0.3s ease-in-out infinite;
+        }
+
+        .error .glow {
+            animation: glowErrorPulse 0.4s ease-in-out infinite;
+        }
+
+        .error .data-point {
+            animation: errorDot 0.2s ease-in-out infinite;
+        }
 
         @keyframes errorRotate {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         @keyframes errorRotateReverse {
-            from { transform: rotate(360deg); }
-            to { transform: rotate(0deg); }
+            from {
+                transform: rotate(360deg);
+            }
+
+            to {
+                transform: rotate(0deg);
+            }
         }
 
         @keyframes errorShake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-2px); }
-            75% { transform: translateX(2px); }
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(-2px);
+            }
+
+            75% {
+                transform: translateX(2px);
+            }
         }
 
         @keyframes errorFlash {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
         }
 
         @keyframes glowError {
-            0%, 100% { opacity: 1; box-shadow: 0 0 30px #ff4444, 0 0 60px #ff4444; transform: scale(1); }
-            50% { opacity: 0.6; box-shadow: 0 0 80px #ff4444, 0 0 120px #ff4444, 0 0 180px #cc0000; transform: scale(1.2); }
+
+            0%,
+            100% {
+                opacity: 1;
+                box-shadow: 0 0 30px #ff4444, 0 0 60px #ff4444;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.6;
+                box-shadow: 0 0 80px #ff4444, 0 0 120px #ff4444, 0 0 180px #cc0000;
+                transform: scale(1.2);
+            }
         }
 
         @keyframes glowErrorPulse {
-            0%, 100% { opacity: 0.3; transform: scale(1); }
-            50% { opacity: 0.7; transform: scale(1.2); }
+
+            0%,
+            100% {
+                opacity: 0.3;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.7;
+                transform: scale(1.2);
+            }
         }
 
         @keyframes errorDot {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.2; transform: scale(2); }
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.2;
+                transform: scale(2);
+            }
         }
 
         /* State Colors */
-        .idle .ring-outer { border-color: rgba(0, 212, 255, 0.6); }
-        .idle .ring-middle { border-color: rgba(0, 168, 204, 0.8); }
-        .idle .ring-inner { border-color: rgba(0, 212, 255, 0.4); }
-        .idle .core-bg { background: rgba(0, 212, 255, 0.05); border-color: rgba(0, 212, 255, 0.8); }
-        .idle .core-reactor { background: rgba(0, 212, 255, 0.15); border-color: #00ffff; }
-        .idle .core-center { background: #00ffff; }
-        .idle .glow { background: radial-gradient(circle, rgba(0, 212, 255, 0.3) 0%, transparent 70%); }
-        .idle .data-point { background: #00d4ff; }
-        .idle .status-indicator { background: #00d4ff; }
-        .idle .status-text { color: #00d4ff; text-shadow: 0 0 10px #00d4ff; }
+        .idle .ring-outer {
+            border-color: rgba(0, 212, 255, 0.6);
+        }
 
-        .listening .ring-outer { border-color: rgba(0, 255, 136, 0.6); }
-        .listening .ring-middle { border-color: rgba(0, 255, 136, 0.8); }
-        .listening .ring-inner { border-color: rgba(0, 255, 136, 0.4); }
-        .listening .core-bg { background: rgba(0, 255, 136, 0.05); border-color: rgba(0, 255, 136, 0.8); }
-        .listening .core-reactor { background: rgba(0, 255, 136, 0.15); border-color: #00ff88; }
-        .listening .core-center { background: #00ff88; }
-        .listening .glow { background: radial-gradient(circle, rgba(0, 255, 136, 0.3) 0%, transparent 70%); }
-        .listening .scan-line { border-top-color: #00ff88; }
-        .listening .data-point { background: #00ff88; }
-        .listening .status-indicator { background: #00ff88; }
-        .listening .status-text { color: #00ff88; text-shadow: 0 0 10px #00ff88; }
+        .idle .ring-middle {
+            border-color: rgba(0, 168, 204, 0.8);
+        }
 
-        .thinking .ring-outer { border-color: rgba(255, 170, 0, 0.6); }
-        .thinking .ring-middle { border-color: rgba(255, 170, 0, 0.8); }
-        .thinking .ring-inner { border-color: rgba(255, 170, 0, 0.4); }
-        .thinking .core-bg { background: rgba(255, 170, 0, 0.05); border-color: rgba(255, 170, 0, 0.8); }
-        .thinking .core-reactor { background: rgba(255, 170, 0, 0.15); border-color: #ffaa00; }
-        .thinking .core-center { background: #ffaa00; }
-        .thinking .glow { background: radial-gradient(circle, rgba(255, 170, 0, 0.3) 0%, transparent 70%); }
-        .thinking .data-point { background: #ffaa00; }
-        .thinking .status-indicator { background: #ffaa00; }
-        .thinking .status-text { color: #ffaa00; text-shadow: 0 0 10px #ffaa00; }
+        .idle .ring-inner {
+            border-color: rgba(0, 212, 255, 0.4);
+        }
 
-        .speaking .ring-outer { border-color: rgba(0, 255, 255, 0.6); }
-        .speaking .ring-middle { border-color: rgba(0, 255, 255, 0.8); }
-        .speaking .ring-inner { border-color: rgba(0, 255, 255, 0.4); }
-        .speaking .core-bg { background: rgba(0, 255, 255, 0.05); border-color: rgba(0, 255, 255, 0.8); }
-        .speaking .core-reactor { background: rgba(0, 255, 255, 0.15); border-color: #00ffff; }
-        .speaking .core-center { background: #00ffff; }
-        .speaking .glow { background: radial-gradient(circle, rgba(0, 255, 255, 0.3) 0%, transparent 70%); }
-        .speaking .data-point { background: #00ffff; }
-        .speaking .status-indicator { background: #00ffff; }
-        .speaking .status-text { color: #00ffff; text-shadow: 0 0 10px #00ffff; }
+        .idle .core-bg {
+            background: rgba(0, 212, 255, 0.05);
+            border-color: rgba(0, 212, 255, 0.8);
+        }
 
-        .error .ring-outer { border-color: rgba(255, 68, 68, 0.6); }
-        .error .ring-middle { border-color: rgba(255, 68, 68, 0.8); }
-        .error .ring-inner { border-color: rgba(255, 68, 68, 0.4); }
-        .error .core-bg { background: rgba(255, 68, 68, 0.15); border-color: rgba(255, 68, 68, 0.9); }
-        .error .core-reactor { background: rgba(255, 68, 68, 0.3); border-color: #ff4444; }
-        .error .core-center { background: #ff4444; }
-        .error .glow { background: radial-gradient(circle, rgba(255, 68, 68, 0.4) 0%, transparent 70%); }
-        .error .data-point { background: #ff4444; }
-        .error .status-indicator { background: #ff4444; }
-        .error .status-text { color: #ff4444; text-shadow: 0 0 10px #ff4444; }
+        .idle .core-reactor {
+            background: rgba(0, 212, 255, 0.15);
+            border-color: #00ffff;
+        }
+
+        .idle .core-center {
+            background: #00ffff;
+        }
+
+        .idle .glow {
+            background: radial-gradient(circle, rgba(0, 212, 255, 0.3) 0%, transparent 70%);
+        }
+
+        .idle .data-point {
+            background: #00d4ff;
+        }
+
+        .idle .status-indicator {
+            background: #00d4ff;
+        }
+
+        .idle .status-text {
+            color: #00d4ff;
+            text-shadow: 0 0 10px #00d4ff;
+        }
+
+        .listening .ring-outer {
+            border-color: rgba(0, 255, 136, 0.6);
+        }
+
+        .listening .ring-middle {
+            border-color: rgba(0, 255, 136, 0.8);
+        }
+
+        .listening .ring-inner {
+            border-color: rgba(0, 255, 136, 0.4);
+        }
+
+        .listening .core-bg {
+            background: rgba(0, 255, 136, 0.05);
+            border-color: rgba(0, 255, 136, 0.8);
+        }
+
+        .listening .core-reactor {
+            background: rgba(0, 255, 136, 0.15);
+            border-color: #00ff88;
+        }
+
+        .listening .core-center {
+            background: #00ff88;
+        }
+
+        .listening .glow {
+            background: radial-gradient(circle, rgba(0, 255, 136, 0.3) 0%, transparent 70%);
+        }
+
+        .listening .scan-line {
+            border-top-color: #00ff88;
+        }
+
+        .listening .data-point {
+            background: #00ff88;
+        }
+
+        .listening .status-indicator {
+            background: #00ff88;
+        }
+
+        .listening .status-text {
+            color: #00ff88;
+            text-shadow: 0 0 10px #00ff88;
+        }
+
+        .thinking .ring-outer {
+            border-color: rgba(255, 170, 0, 0.6);
+        }
+
+        .thinking .ring-middle {
+            border-color: rgba(255, 170, 0, 0.8);
+        }
+
+        .thinking .ring-inner {
+            border-color: rgba(255, 170, 0, 0.4);
+        }
+
+        .thinking .core-bg {
+            background: rgba(255, 170, 0, 0.05);
+            border-color: rgba(255, 170, 0, 0.8);
+        }
+
+        .thinking .core-reactor {
+            background: rgba(255, 170, 0, 0.15);
+            border-color: #ffaa00;
+        }
+
+        .thinking .core-center {
+            background: #ffaa00;
+        }
+
+        .thinking .glow {
+            background: radial-gradient(circle, rgba(255, 170, 0, 0.3) 0%, transparent 70%);
+        }
+
+        .thinking .data-point {
+            background: #ffaa00;
+        }
+
+        .thinking .status-indicator {
+            background: #ffaa00;
+        }
+
+        .thinking .status-text {
+            color: #ffaa00;
+            text-shadow: 0 0 10px #ffaa00;
+        }
+
+        .speaking .ring-outer {
+            border-color: rgba(0, 255, 255, 0.6);
+        }
+
+        .speaking .ring-middle {
+            border-color: rgba(0, 255, 255, 0.8);
+        }
+
+        .speaking .ring-inner {
+            border-color: rgba(0, 255, 255, 0.4);
+        }
+
+        .speaking .core-bg {
+            background: rgba(0, 255, 255, 0.05);
+            border-color: rgba(0, 255, 255, 0.8);
+        }
+
+        .speaking .core-reactor {
+            background: rgba(0, 255, 255, 0.15);
+            border-color: #00ffff;
+        }
+
+        .speaking .core-center {
+            background: #00ffff;
+        }
+
+        .speaking .glow {
+            background: radial-gradient(circle, rgba(0, 255, 255, 0.3) 0%, transparent 70%);
+        }
+
+        .speaking .data-point {
+            background: #00ffff;
+        }
+
+        .speaking .status-indicator {
+            background: #00ffff;
+        }
+
+        .speaking .status-text {
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+        }
+
+        .error .ring-outer {
+            border-color: rgba(255, 68, 68, 0.6);
+        }
+
+        .error .ring-middle {
+            border-color: rgba(255, 68, 68, 0.8);
+        }
+
+        .error .ring-inner {
+            border-color: rgba(255, 68, 68, 0.4);
+        }
+
+        .error .core-bg {
+            background: rgba(255, 68, 68, 0.15);
+            border-color: rgba(255, 68, 68, 0.9);
+        }
+
+        .error .core-reactor {
+            background: rgba(255, 68, 68, 0.3);
+            border-color: #ff4444;
+        }
+
+        .error .core-center {
+            background: #ff4444;
+        }
+
+        .error .glow {
+            background: radial-gradient(circle, rgba(255, 68, 68, 0.4) 0%, transparent 70%);
+        }
+
+        .error .data-point {
+            background: #ff4444;
+        }
+
+        .error .status-indicator {
+            background: #ff4444;
+        }
+
+        .error .status-text {
+            color: #ff4444;
+            text-shadow: 0 0 10px #ff4444;
+        }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="avatar-wrapper" id="avatar">
@@ -737,7 +1443,7 @@
             };
 
             const sizes = [120, 160, 200, 240, 280];
-            
+
             sizes.forEach((size, i) => {
                 setTimeout(() => {
                     const ring = document.createElement('div');
@@ -756,4 +1462,5 @@
         }
     </script>
 </body>
+
 </html>
