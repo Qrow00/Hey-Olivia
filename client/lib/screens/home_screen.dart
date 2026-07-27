@@ -21,12 +21,16 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isConnected = false;
   bool _wordPulse = false;
   bool _isListening = false;
+  bool _wakeWordMode = false;
+  VoicePhase _voicePhase = VoicePhase.wakeWord;
+  final TextEditingController _chatController = TextEditingController();
 
   StreamSubscription? _avatarSubscription;
   StreamSubscription? _transcriptionSubscription;
   StreamSubscription? _responseSubscription;
   StreamSubscription? _vadSubscription;
   StreamSubscription? _messageSubscription;
+  StreamSubscription? _ttsDoneSubscription;
   Timer? _wordPulseTimer;
   int _wordIndex = 0;
   List<String> _words = [];
@@ -37,22 +41,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _voiceService = VoiceService(widget.webSocketService);
     _setupListeners();
     _setupConnectionWatch();
-    _autoStartListening();
   }
 
-  void _autoStartListening() async {
-    await Future.delayed(Duration(seconds: 2));
-    if (mounted && !_isListening) {
-      final started = await _voiceService.startListening();
-      if (mounted) {
-        setState(() => _isListening = started);
-      }
-    }
-  }
+  bool _greetingReceived = false;
 
   void _setupListeners() {
     _avatarSubscription = _voiceService.avatarState.listen((state) {
-      setState(() => _avatarState = state);
+      setState(() {
+        _avatarState = state;
+        _voicePhase = _voiceService.voicePhase;
+        if (state == 'idle') {
+          _wakeWordMode = _voiceService.isListening;
+        }
+      });
       if (state == 'speaking') {
         _startWordPulse();
       } else {
@@ -67,6 +68,21 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     });
 
+    _ttsDoneSubscription = _voiceService.ttsDone.listen((_) {
+      if (!_greetingReceived && mounted) {
+        _greetingReceived = true;
+        Future.delayed(Duration(milliseconds: 500), () async {
+          if (mounted) {
+            final started = await _voiceService.startWakeWordMode();
+            if (mounted) setState(() {
+              _wakeWordMode = started;
+              _voicePhase = VoicePhase.wakeWord;
+            });
+          }
+        });
+      }
+    });
+
     _responseSubscription = _voiceService.response.listen((response) {
       setState(() => _lastMessage = response);
       _words = response.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
@@ -77,7 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     _vadSubscription = _voiceService.vadState.listen((state) {
-      if (mounted) {
+      if (mounted && _wakeWordMode) {
         setState(() => _isListening = state != VadState.idle);
       }
     });
@@ -115,7 +131,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _messageSubscription = widget.webSocketService.messages.listen((_) {
       if (!_isConnected) {
         setState(() => _isConnected = true);
-        if (!_isListening) _autoStartListening();
       }
     });
 
@@ -124,7 +139,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final connected = widget.webSocketService.isConnected;
         if (connected != _isConnected) {
           setState(() => _isConnected = connected);
-          if (connected && !_isListening) _autoStartListening();
         }
       } else {
         timer.cancel();
@@ -140,18 +154,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _responseSubscription?.cancel();
     _vadSubscription?.cancel();
     _messageSubscription?.cancel();
+    _ttsDoneSubscription?.cancel();
     _voiceService.dispose();
     super.dispose();
-  }
-
-  Future<void> _toggleListening() async {
-    if (_isListening) {
-      await _voiceService.stopListening();
-      setState(() => _isListening = false);
-    } else {
-      final started = await _voiceService.startListening();
-      setState(() => _isListening = started);
-    }
   }
 
   @override
@@ -178,6 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildStatusBar() {
+    final isCommandPhase = _voicePhase == VoicePhase.command;
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
@@ -210,14 +216,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 height: 8,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: _isListening ? Colors.green : Colors.grey,
+                  color: _wakeWordMode
+                      ? (isCommandPhase ? Colors.orange : Colors.green)
+                      : Colors.grey,
                 ),
               ),
               SizedBox(width: 6),
               Text(
-                _isListening ? 'Listening' : 'Muted',
+                _wakeWordMode
+                    ? (isCommandPhase ? 'Command' : 'Wake Word')
+                    : 'Muted',
                 style: TextStyle(
-                  color: _isListening ? Colors.green : Colors.grey,
+                  color: _wakeWordMode
+                      ? (isCommandPhase ? Colors.orange : Colors.green)
+                      : Colors.grey,
                   fontSize: 12,
                 ),
               ),
@@ -241,7 +253,9 @@ class _HomeScreenState extends State<HomeScreen> {
     String statusText;
     switch (_avatarState) {
       case 'listening':
-        statusText = 'Listening...';
+        statusText = _voicePhase == VoicePhase.command
+            ? 'Listening for command...'
+            : 'Listening...';
         break;
       case 'thinking':
         statusText = 'Processing...';
@@ -253,150 +267,79 @@ class _HomeScreenState extends State<HomeScreen> {
         statusText = 'Something went wrong. Try again.';
         break;
       default:
-        statusText = _lastMessage;
+        if (_wakeWordMode) {
+          statusText = _voicePhase == VoicePhase.command
+              ? 'Command received. Speak your request...'
+              : 'Say "Hey Jarvis" to activate';
+        } else {
+          statusText = _lastMessage;
+        }
     }
 
     return Container(
-      padding: EdgeInsets.all(24),
+      padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Color(0xFF1a1a2e),
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             statusText,
             style: TextStyle(
               color: _avatarState == 'speaking' ? Colors.cyan : Colors.white54,
-              fontSize: 16,
+              fontSize: 14,
               fontStyle: _avatarState == 'idle' ? FontStyle.normal : FontStyle.italic,
             ),
             textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
-          SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildMicButton(),
-              _buildActionButton(Icons.chat, 'Type', _showTextInput),
-            ],
-          ),
+          SizedBox(height: 12),
+          _buildChatBar(),
         ],
       ),
     );
   }
 
-  Widget _buildMicButton() {
-    final isActive = _isListening;
-    final color = isActive ? Colors.green : Colors.red;
-
-    return GestureDetector(
-      onTap: _toggleListening,
-      child: Column(
-        children: [
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: color, width: 2),
-            ),
-            child: Icon(
-              isActive ? Icons.mic : Icons.mic_off,
-              color: color,
-              size: 28,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            isActive ? 'Listening' : 'Muted',
-            style: TextStyle(color: Colors.white70),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(
-    IconData icon,
-    String label,
-    VoidCallback onTap, {
-    bool isActive = false,
-    Color activeColor = Colors.cyan,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isActive
-                  ? activeColor.withValues(alpha: 0.3)
-                  : Colors.cyan.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
-              border: isActive
-                  ? Border.all(color: activeColor, width: 2)
-                  : null,
-            ),
-            child: Icon(
-              icon,
-              color: isActive ? activeColor : Colors.cyan,
-              size: 28,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(label, style: TextStyle(color: Colors.white70)),
-        ],
-      ),
-    );
-  }
-
-  void _showTextInput() {
-    final controller = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Color(0xFF1a1a2e),
-        title: Text('Speak to J.A.R.V.I.S.', style: TextStyle(color: Colors.cyan)),
-        content: TextField(
-          controller: controller,
-          style: TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: 'Type your message...',
-            hintStyle: TextStyle(color: Colors.white54),
-            focusedBorder: OutlineInputBorder(
-              borderSide: BorderSide(color: Colors.cyan),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderSide: BorderSide(color: Colors.white24),
-            ),
-          ),
-          autofocus: true,
-          onSubmitted: (text) {
-            if (text.isNotEmpty) {
-              _voiceService.sendTextMessage(text);
-              Navigator.pop(context);
-            }
-          },
+  Widget _buildChatBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Color(0xFF0d1117),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: Colors.cyan.withValues(alpha: 0.3),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: Colors.white70)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _chatController,
+              style: TextStyle(color: Colors.white, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'Type a message...',
+                hintStyle: TextStyle(color: Colors.white38),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              textInputAction: TextInputAction.send,
+              onSubmitted: (text) => _sendChat(text),
+            ),
           ),
-          TextButton(
-            onPressed: () {
-              if (controller.text.isNotEmpty) {
-                _voiceService.sendTextMessage(controller.text);
-                Navigator.pop(context);
-              }
-            },
-            child: Text('Send', style: TextStyle(color: Colors.cyan)),
+          IconButton(
+            icon: Icon(Icons.send, color: Colors.cyan),
+            onPressed: () => _sendChat(_chatController.text),
           ),
         ],
       ),
     );
+  }
+
+  void _sendChat(String text) {
+    if (text.trim().isEmpty) return;
+    _voiceService.sendTextMessage(text.trim());
+    _chatController.clear();
   }
 }

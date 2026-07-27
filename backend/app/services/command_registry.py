@@ -1,5 +1,6 @@
 import re
 import json
+import asyncio
 from typing import Optional, Callable, Any
 from dataclasses import dataclass, field
 
@@ -1036,10 +1037,14 @@ Examples:
 Return ONLY valid JSON, no explanation."""
 
         try:
-            response = ollama.chat(
-                model="llama3.2",
-                messages=[{"role": "user", "content": prompt}],
-                options={"temperature": 0.0, "num_predict": 150},
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    ollama.chat,
+                    model="llama3.2",
+                    messages=[{"role": "user", "content": prompt}],
+                    options={"temperature": 0.0, "num_predict": 150},
+                ),
+                timeout=30
             )
             content = response["message"]["content"].strip()
             content = re.sub(r'```json\n?|\n?```', '', content).strip()

@@ -1,6 +1,7 @@
 import io
 import tempfile
 import os
+import asyncio
 from typing import Optional
 
 _ffmpeg_dir = os.path.join(os.path.expanduser("~"), "ffmpeg")
@@ -34,8 +35,8 @@ class VoiceService:
         import torch
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._fp16 = self._device == "cuda"
-        print(f"Loading Whisper STT model (tiny, {self._device})...")
-        self.stt_model = whisper.load_model("tiny", device=self._device)
+        print(f"Loading Whisper STT model (base, {self._device})...")
+        self.stt_model = whisper.load_model("base", device=self._device)
         print("Voice service initialized")
         self._initialized = True
 
@@ -48,10 +49,14 @@ class VoiceService:
             tmp_path = tmp.name
 
         try:
-            result = self.stt_model.transcribe(
-                tmp_path,
-                language=language,
-                fp16=self._fp16
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.stt_model.transcribe,
+                    tmp_path,
+                    language=language,
+                    fp16=self._fp16
+                ),
+                timeout=30
             )
             return {
                 "text": result["text"],
@@ -107,10 +112,21 @@ class VoiceService:
 
         messages.append({"role": "user", "content": message})
 
-        response = ollama.chat(
-            model=self.llm_model,
-            messages=messages
-        )
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    ollama.chat,
+                    model=self.llm_model,
+                    messages=messages
+                ),
+                timeout=60
+            )
+        except asyncio.TimeoutError:
+            print(f"[LLM] Timeout waiting for {self.llm_model}")
+            return {"response": "I'm taking too long to respond. Please try again.", "model": self.llm_model, "done": True}
+        except Exception as e:
+            print(f"[LLM] Error: {e}")
+            return {"response": "I had trouble thinking just now. Please try again.", "model": self.llm_model, "done": True}
 
         assistant_response = response["message"]["content"]
         conversation_memory.add_message("user", message)
@@ -165,7 +181,7 @@ class VoiceService:
             "device": getattr(self, "_device", "cpu"),
             "tts_voice": voice_profile_service.get_active_profile().name,
             "llm_model": self.llm_model,
-            "conversation_length": len(self._conversation_history),
+            "conversation_length": len(conversation_memory.get_recent_history(999)),
             "personality": personality_service.get_status(),
         }
 

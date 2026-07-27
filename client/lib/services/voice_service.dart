@@ -9,6 +9,8 @@ import 'websocket_service.dart';
 
 enum VadState { idle, listening, speaking, processing }
 
+enum VoicePhase { wakeWord, command }
+
 class VoiceService {
   final WebSocketService _webSocketService;
   bool _isDisposed = false;
@@ -24,20 +26,25 @@ class VoiceService {
   final _responseController = StreamController<String>.broadcast();
   final _exitController = StreamController<void>.broadcast();
   final _vadStateController = StreamController<VadState>.broadcast();
+  final _ttsDoneController = StreamController<void>.broadcast();
   String _currentState = 'idle';
 
   VadState _vadState = VadState.idle;
+  VoicePhase _voicePhase = VoicePhase.wakeWord;
   List<int> _audioBuffer = [];
   int _silenceFrames = 0;
   int _speechFrames = 0;
   bool _isProcessing = false;
   bool _alwaysListening = false;
+  bool _wakeWordMode = false;
+  bool _wakeWordCooldown = false;
+  Process? _currentPlayer;
 
   static const int _sampleRate = 16000;
   static const int _bytesPerSample = 2;
   static const int _frameSize = 960;
-  static const double _speechThreshold = 400.0;
-  static const int _speechStartFrames = 3;
+  static const double _speechThreshold = 650.0;
+  static const int _speechStartFrames = 5;
   static const int _silenceEndFrames = 25;
   static const int _minSpeechFrames = 5;
   static const int _maxBufferSeconds = 30;
@@ -47,8 +54,10 @@ class VoiceService {
   Stream<String> get response => _responseController.stream;
   Stream<void> get exitApp => _exitController.stream;
   Stream<VadState> get vadState => _vadStateController.stream;
+  Stream<void> get ttsDone => _ttsDoneController.stream;
   bool get isListening => _alwaysListening;
   bool get isRecording => _alwaysListening;
+  VoicePhase get voicePhase => _voicePhase;
 
   static String get _ffmpegPath {
     final ffmpegDir = '${Platform.environment['USERPROFILE']}\\ffmpeg';
@@ -104,7 +113,9 @@ class VoiceService {
         _safeAdd(_avatarStateController, message['state']);
         if (message['state'] == 'idle' || message['state'] == 'error') {
           _isProcessing = false;
+          _wakeWordCooldown = false;
           if (_alwaysListening) {
+            _voicePhase = VoicePhase.wakeWord;
             _vadState = VadState.listening;
             _safeAdd(_vadStateController, _vadState);
           }
@@ -126,11 +137,48 @@ class VoiceService {
         _safeAdd(_avatarStateController, 'error');
         _isProcessing = false;
         break;
+      case 'wake_word_detected':
+        print('[Voice] Wake word detected by server, entering command phase');
+        _voicePhase = VoicePhase.command;
+        _isProcessing = false;
+        _vadState = VadState.listening;
+        _safeAdd(_vadStateController, _vadState);
+        _safeAdd(_avatarStateController, 'listening');
+        break;
+      case 'wake_word_miss':
+        _isProcessing = false;
+        _vadState = VadState.listening;
+        _safeAdd(_vadStateController, _vadState);
+        _wakeWordCooldown = true;
+        print('[Voice] Wake word miss, cooldown 2s');
+        Future.delayed(Duration(seconds: 2), () {
+          _wakeWordCooldown = false;
+          print('[Voice] Cooldown ended, ready for next attempt');
+        });
+        break;
+      case 'wake_word_error':
+        print('[Voice] Wake word error: ${message['message']}');
+        _safeAdd(_avatarStateController, 'error');
+        _isProcessing = false;
+        break;
+    }
+  }
+
+  void _stopCurrentPlayer() {
+    final player = _currentPlayer;
+    if (player != null && player.pid > 0) {
+      print('[Voice] Stopping previous audio');
+      try {
+        player.kill();
+      } catch (_) {}
+      _currentPlayer = null;
     }
   }
 
   Future<void> _playAudio(String? audioBase64) async {
     if (audioBase64 == null || audioBase64.isEmpty || _isDisposed) return;
+
+    _stopCurrentPlayer();
 
     try {
       final audioBytes = base64Decode(audioBase64);
@@ -142,7 +190,11 @@ class VoiceService {
       final safePath = file.path.replaceAll("'", "''");
 
       print('[Voice] Playing TTS via .NET MediaPlayer...');
-      await Process.run('powershell', [
+      if (isListening && !_isDisposed) {
+        await stopListening();
+        print('[Voice] Paused mic during TTS playback');
+      }
+      final process = await Process.start('powershell', [
         '-NoProfile', '-NonInteractive', '-Command',
         "Add-Type -AssemblyName PresentationCore; "
         "\$p = New-Object System.Windows.Media.MediaPlayer; "
@@ -160,7 +212,19 @@ class VoiceService {
         "} "
         "\$p.Stop(); \$p.Close();",
       ]);
+      _currentPlayer = process;
+
+      await process.exitCode;
+      _currentPlayer = null;
       print('[Voice] TTS playback done');
+      _safeAdd(_ttsDoneController, null);
+      if (!_isDisposed) {
+        await Future.delayed(Duration(milliseconds: 300));
+        if (!_isDisposed) {
+          startListening();
+          print('[Voice] Resumed mic after TTS');
+        }
+      }
 
       try {
         if (await file.exists()) await file.delete();
@@ -235,7 +299,12 @@ class VoiceService {
   }
 
   Future<bool> startListening() async {
-    if (_alwaysListening || _isDisposed) return false;
+    if (_isDisposed) return false;
+
+    if (_alwaysListening) {
+      await stopListening();
+      await Future.delayed(Duration(milliseconds: 300));
+    }
 
     try {
       String micName;
@@ -259,15 +328,25 @@ class VoiceService {
         'pipe:1',
       ];
 
-      print('[Voice] Starting always-on listening: ffmpeg $args');
+      print('[Voice] Starting listening: ffmpeg $args');
 
       _recordingProcess = await Process.start(_ffmpegPath, args);
+
+      _recordingProcess!.stderr.listen((data) {
+        final msg = String.fromCharCodes(data).trim();
+        if (msg.isNotEmpty) print('[Voice] ffmpeg stderr: $msg');
+      });
+
+      _recordingProcess!.exitCode.then((code) {
+        print('[Voice] ffmpeg exited with code $code');
+        _isProcessing = false;
+      });
 
       _alwaysListening = true;
       _vadState = VadState.listening;
       _safeAdd(_vadStateController, _vadState);
       _safeAdd(_avatarStateController, 'listening');
-      print('[Voice] Always-on listening started');
+      print('[Voice] Listening started');
 
       _processAudioStream(_recordingProcess!.stdout);
 
@@ -277,6 +356,15 @@ class VoiceService {
       _alwaysListening = false;
       return false;
     }
+  }
+
+  Future<bool> startWakeWordMode() async {
+    if (_isDisposed) return false;
+    _wakeWordMode = true;
+    _voicePhase = VoicePhase.wakeWord;
+    final started = await startListening();
+    if (!started) _wakeWordMode = false;
+    return started;
   }
 
   Future<String?> _detectDefaultMic() async {
@@ -305,12 +393,6 @@ class VoiceService {
       },
       onDone: () {
         print('[Voice] Audio stream ended');
-        if (_alwaysListening) {
-          _alwaysListening = false;
-          _vadState = VadState.idle;
-          _safeAdd(_vadStateController, _vadState);
-          _safeAdd(_avatarStateController, 'idle');
-        }
       },
       onError: (e) {
         print('[Voice] Audio stream error: $e');
@@ -376,7 +458,7 @@ class VoiceService {
   }
 
   void _sendBufferedAudio() {
-    if (_audioBuffer.isEmpty || _isProcessing) {
+    if (_audioBuffer.isEmpty || _isProcessing || _wakeWordCooldown) {
       _audioBuffer.clear();
       _vadState = VadState.listening;
       _safeAdd(_vadStateController, _vadState);
@@ -424,11 +506,12 @@ class VoiceService {
     _safeAdd(_vadStateController, _vadState);
 
     final wavBytes = wav.buffer.asUint8List();
-    print('[Voice] Sending ${wavBytes.length} bytes (${totalSamples / _sampleRate}s)');
+    print('[Voice] Sending ${wavBytes.length} bytes (${totalSamples / _sampleRate}s) phase=$_voicePhase');
 
     _webSocketService.send({
       'type': 'voice_chunk',
       'audio': base64Encode(wavBytes),
+      'wake_word_check': _voicePhase == VoicePhase.wakeWord,
     });
   }
 
@@ -436,6 +519,7 @@ class VoiceService {
     if (!_alwaysListening || _isDisposed) return;
 
     _alwaysListening = false;
+    _voicePhase = VoicePhase.wakeWord;
     _vadState = VadState.idle;
     _safeAdd(_vadStateController, _vadState);
 
