@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import (
     devices, conversations, settings, commands, websocket, voice,
     screen_share, cameras, wearables, smart_home, vision, plugins,
-    personality, voice_profiles, browser,
+    personality, voice_profiles, browser, system,
 )
 from app.models.database import engine, Base
 from app.plugins.manager import plugin_manager
@@ -35,6 +35,7 @@ app.include_router(plugins.router, prefix="/api/v1/plugins", tags=["plugins"])
 app.include_router(personality.router, prefix="/api/v1/personality", tags=["personality"])
 app.include_router(voice_profiles.router, prefix="/api/v1/voice-profiles", tags=["voice-profiles"])
 app.include_router(browser.router, prefix="/api/v1/browser", tags=["browser"])
+app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 
 
 @app.on_event("startup")
@@ -103,6 +104,7 @@ async def api_root():
             "personality": "/api/v1/personality",
             "voice-profiles": "/api/v1/voice-profiles",
             "browser": "/api/v1/browser",
+            "system": "/api/v1/system",
             "monitoring": "ws://.../ws (type: monitoring_snapshot)",
         },
     }

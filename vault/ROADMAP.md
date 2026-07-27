@@ -97,3 +97,14 @@
 - **Networking:** Tailscale
 - **Protocol:** WebSocket (real-time), REST (config)
 - **Database:** SQLite/Realm (local), PostgreSQL (server)
+
+---
+
+## Related
+
+- [[AGENTS]] — project rules and architecture
+- [[DATA_STRUCTURE]] — data models and schemas
+- [[SETUP]] — installation and configuration
+- [[API_DOCS]] — backend API reference
+- [[JARVIS_ENHANCEMENT_PLAN]] — future feature roadmap
+- [[Memory Map]] — vault index
