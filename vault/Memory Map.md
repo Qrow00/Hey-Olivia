@@ -25,6 +25,18 @@
 - [[Morning Briefing]] — daily voice readout
 - [[Routines & Automation]] — multi-step voice commands
 
+## Methodology
+- [[Ponytail Minimalism Decision Ladder]] — before coding, descend: YAGNI → stdlib → native → existing dep → one line → minimum
+
+## Tooling & Observability
+- [[CodeBurn token usage tracker]] — AI coding token/cost tracking across 36+ agents
+
+## Current Issues
+- [[Pinned Issues]] — known bugs, fixes applied, and next debugging steps (Jul 29 session)
+
+## Master Plan
+- [[MASTER_PLAN]] — 6-phase multi-device refactor (in progress, ~80% done)
+
 ## Future Development
 - [[JARVIS_ENHANCEMENT_PLAN]] — 8-phase enhancement roadmap (24 days)
 

@@ -19,6 +19,7 @@ from app.services.personality_service import personality_service
 from app.services.command_registry import command_registry
 from app.services.conversation_memory import conversation_memory
 from app.services.knowledge_service import knowledge_service
+from app.services.settings_service import settings_service
 
 
 class VoiceService:
@@ -27,7 +28,10 @@ class VoiceService:
         self.tts_voice = "en-US-GuyNeural"
         self.llm_model = "llama3.2"
         self._initialized = False
-        self._max_history = 50
+        self._max_history = 15
+
+    def _get_model(self, profile_id: str = "default") -> str:
+        return settings_service.get(profile_id, "voice", "llm_model") or self.llm_model
 
     async def initialize(self):
         if self._initialized:
@@ -37,7 +41,21 @@ class VoiceService:
         self._fp16 = self._device == "cuda"
         print(f"Loading Whisper STT model (base, {self._device})...")
         self.stt_model = whisper.load_model("base", device=self._device)
-        print("Voice service initialized")
+        self.llm_model = self._get_model()
+        print(f"Voice service initialized, warming {self.llm_model}...")
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(
+                    ollama.chat,
+                    model=self.llm_model,
+                    messages=[{"role": "user", "content": "Hello"}],
+                    options={"num_ctx": 2048}
+                ),
+                timeout=30
+            )
+            print(f"[LLM] {self.llm_model} warmed up")
+        except Exception as e:
+            print(f"[LLM] Warm-up skipped: {e}")
         self._initialized = True
 
     async def speech_to_text(self, audio_data: bytes, language: str = "en") -> dict:
@@ -92,17 +110,20 @@ class VoiceService:
         self,
         message: str,
         system_prompt: str = None,
-        conversation_history: Optional[list] = None
+        conversation_history: Optional[list] = None,
+        profile_id: str = "default"
     ) -> dict:
+        model = self._get_model(profile_id)
         if system_prompt is None:
-            system_prompt = personality_service.get_system_prompt()
+            system_prompt = personality_service.get_system_prompt(profile_id=profile_id)
 
         messages = [{"role": "system", "content": system_prompt}]
 
+        mem = conversation_memory.for_profile(profile_id)
         if conversation_history:
             messages.extend(conversation_history[-self._max_history:])
         else:
-            history = conversation_memory.get_recent_history(self._max_history)
+            history = mem.get_recent_history(self._max_history)
             if history:
                 messages.extend(history)
 
@@ -116,21 +137,22 @@ class VoiceService:
             response = await asyncio.wait_for(
                 asyncio.to_thread(
                     ollama.chat,
-                    model=self.llm_model,
-                    messages=messages
+                    model=model,
+                    messages=messages,
+                    options={"num_ctx": 2048}
                 ),
-                timeout=60
+                timeout=30
             )
         except asyncio.TimeoutError:
-            print(f"[LLM] Timeout waiting for {self.llm_model}")
-            return {"response": "I'm taking too long to respond. Please try again.", "model": self.llm_model, "done": True}
+            print(f"[LLM] Timeout waiting for {model}")
+            return {"response": "I'm taking too long to respond. Please try again.", "model": model, "done": True}
         except Exception as e:
             print(f"[LLM] Error: {e}")
-            return {"response": "I had trouble thinking just now. Please try again.", "model": self.llm_model, "done": True}
+            return {"response": "I had trouble thinking just now. Please try again.", "model": model, "done": True}
 
         assistant_response = response["message"]["content"]
-        conversation_memory.add_message("user", message)
-        conversation_memory.add_message("assistant", assistant_response)
+        mem.add_message("user", message)
+        mem.add_message("assistant", assistant_response)
 
         try:
             knowledge_service.extract_and_store(message, assistant_response)
@@ -139,7 +161,7 @@ class VoiceService:
 
         return {
             "response": assistant_response,
-            "model": self.llm_model,
+            "model": model,
             "done": response.get("done", True)
         }
 
@@ -148,14 +170,16 @@ class VoiceService:
         audio_data: bytes,
         system_prompt: str = None,
         conversation_history: Optional[list] = None,
-        tts_voice: Optional[str] = None
+        tts_voice: Optional[str] = None,
+        profile_id: str = "default"
     ) -> dict:
         stt_result = await self.speech_to_text(audio_data)
 
         llm_result = await self.chat_completion(
             message=stt_result["text"],
-            system_prompt=system_prompt or personality_service.get_system_prompt(),
+            system_prompt=system_prompt or personality_service.get_system_prompt(profile_id=profile_id),
             conversation_history=conversation_history,
+            profile_id=profile_id,
         )
 
         profile = voice_profile_service.get_active_profile()
@@ -174,15 +198,16 @@ class VoiceService:
             "model": llm_result["model"],
         }
 
-    def get_status(self) -> dict:
+    def get_status(self, profile_id: str = "default") -> dict:
+        mem = conversation_memory.for_profile(profile_id)
         return {
             "initialized": self._initialized,
             "stt_model": "whisper-tiny",
             "device": getattr(self, "_device", "cpu"),
             "tts_voice": voice_profile_service.get_active_profile().name,
-            "llm_model": self.llm_model,
-            "conversation_length": len(conversation_memory.get_recent_history(999)),
-            "personality": personality_service.get_status(),
+            "llm_model": self._get_model(profile_id),
+            "conversation_length": len(mem.get_recent_history(999)),
+            "personality": personality_service.get_status(profile_id=profile_id),
         }
 
 
