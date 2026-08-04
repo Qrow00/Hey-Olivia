@@ -13,6 +13,7 @@ from app.services.vision_service import vision_service
 from app.services.system_command_service import system_command_service
 from app.services.hermes_browser import hermes_browser
 from app.services.personality_service import personality_service
+from app.services.voice_session_service import VoiceSession
 
 router = APIRouter()
 
@@ -823,11 +824,22 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
                 await handle_transfer_chunk(websocket, message)
             elif msg_type == "mesh_devices":
                 await handle_device_mesh_devices(websocket)
+            elif msg_type == "voice_mode_start":
+                await handle_voice_mode_start(websocket, ci.profile_id)
+            elif msg_type == "audio_frame":
+                await handle_audio_frame(websocket, message)
+            elif msg_type == "tts_done":
+                await handle_tts_done(websocket)
+            elif msg_type == "voice_mode_stop":
+                await handle_voice_mode_stop(websocket)
             else:
                 await broadcast(message, websocket)
 
     except WebSocketDisconnect:
         introduction_pending.discard(client_id)
+        session = voice_sessions.pop(client_id, None)
+        if session is not None:
+            await session.stop()
         info_list = connected_clients.get(ci.profile_id, [])
         connected_clients[ci.profile_id] = [c for c in info_list if c.client_id != client_id]
         if not connected_clients[ci.profile_id]:
@@ -2630,6 +2642,48 @@ async def handle_briefing_config(websocket: WebSocket, message: dict):
 
 # ── Wake Word WebSocket Handlers ───────────────────────────────────────────────
 
+voice_sessions: dict[int, VoiceSession] = {}
+
+
+async def handle_voice_mode_start(websocket: WebSocket, profile_id: str):
+    from app.services.settings_service import settings_service
+
+    ws_id = id(websocket)
+    if ws_id in voice_sessions:
+        return
+    threshold = float(settings_service.get(profile_id, "voice", "wake_word_sensitivity") or 0.5)
+    session = VoiceSession(
+        send=lambda payload: safe_send(websocket, payload),
+        profile_id=profile_id,
+        threshold=threshold,
+        build_system_prompt=lambda message, pid: _build_system_prompt("", message, pid),
+        is_introduction=lambda: ws_id in introduction_pending,
+        on_intro_complete=lambda: introduction_pending.discard(ws_id),
+    )
+    result = await session.start()
+    if result.get("status") == "success":
+        voice_sessions[ws_id] = session
+
+
+async def handle_audio_frame(websocket: WebSocket, message: dict):
+    session = voice_sessions.get(id(websocket))
+    if session is not None:
+        await session.feed_pcm(message.get("audio", ""))
+
+
+async def handle_tts_done(websocket: WebSocket):
+    session = voice_sessions.get(id(websocket))
+    if session is not None:
+        await session.on_tts_done()
+
+
+async def handle_voice_mode_stop(websocket: WebSocket):
+    ws_id = id(websocket)
+    session = voice_sessions.pop(ws_id, None)
+    if session is not None:
+        await session.stop()
+
+
 async def handle_wake_word_start(websocket: WebSocket):
     from app.services.wake_word_service import wake_word_service
 
@@ -2658,22 +2712,17 @@ async def handle_wake_word_stop(websocket: WebSocket):
 
 
 async def handle_wake_word_config(websocket: WebSocket, message: dict):
-    from app.services.wake_word_service import wake_word_service
-    keywords = message.get("keywords") or message.get("phrases")
+    session = voice_sessions.get(id(websocket))
+    if session is None:
+        await safe_send(websocket, {"type": "wake_word_config", "config": {"active": False}})
+        return
     sensitivity = message.get("sensitivity")
-    keyword_paths = message.get("keyword_paths")
-
-    if keywords:
-        wake_word_service.set_keywords(keywords)
-    if keyword_paths:
-        wake_word_service.set_keyword_paths(keyword_paths)
     if sensitivity is not None:
-        wake_word_service.set_sensitivity(float(sensitivity))
-
-    await safe_send(websocket, {
-        "type": "wake_word_config",
-        "config": wake_word_service.get_config(),
-    })
+        session.set_threshold(float(sensitivity))
+    keywords = message.get("keywords") or message.get("phrases")
+    if keywords:
+        session.set_keywords(keywords)
+    await safe_send(websocket, {"type": "wake_word_config", "config": session.get_config()})
 
 
 # ── Routine WebSocket Handlers ─────────────────────────────────────────────────
