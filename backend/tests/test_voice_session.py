@@ -432,3 +432,21 @@ async def test_intro_complete_callback_invoked():
     )
     await run_finalize(session)
     assert calls == [True]
+
+
+def test_real_wake_model_and_vad_load():
+    pytest.importorskip("openwakeword")
+    from app.services.voice_session_service import _load_wake_model, _load_vad
+
+    model = _load_wake_model(["hey_jarvis"])
+    assert model is not None
+    vad = _load_vad()
+    assert vad is not None
+
+    frame = np.zeros(1280, dtype=np.int16)
+    scores = model.predict((frame / 32768.0).astype(np.float32))
+    assert "hey_jarvis" in scores
+    assert 0.0 <= float(scores["hey_jarvis"]) <= 1.0
+
+    prob = float(vad.predict(np.zeros(480, dtype=np.int16)))
+    assert 0.0 <= prob <= 1.0
