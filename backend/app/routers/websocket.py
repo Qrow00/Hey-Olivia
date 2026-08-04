@@ -2,7 +2,6 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import json
 import base64
 import asyncio
-import re
 from datetime import datetime, timezone
 from app.services.voice_service import voice_service
 from app.services.screen_share_service import screen_share_service
@@ -16,20 +15,6 @@ from app.services.personality_service import personality_service
 from app.services.voice_session_service import VoiceSession
 
 router = APIRouter()
-
-_WAKE_PHRASE_PATTERNS = [
-    re.compile(r"^\s*hey\s+jar[a-z]*", re.IGNORECASE),
-    re.compile(r"^\s*jarvis", re.IGNORECASE),
-]
-
-
-def _strip_wake_phrase(text: str) -> str:
-    cleaned = text.strip()
-    for pattern in _WAKE_PHRASE_PATTERNS:
-        match = pattern.match(cleaned)
-        if match:
-            return cleaned[match.end():].strip(" .,!?")
-    return cleaned
 
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -203,26 +188,6 @@ def _register_system_handlers():
 
     command_registry.register_handler("morning_briefing", morning_briefing_handler)
     command_registry.register_handler("briefing_config", briefing_config_handler)
-
-    from app.services.wake_word_service import wake_word_service
-
-    async def wake_word_start_handler() -> dict:
-        return await wake_word_service.start()
-
-    async def wake_word_stop_handler() -> dict:
-        return await wake_word_service.stop()
-
-    async def wake_word_config_handler(setting: str = "", value: str = "") -> dict:
-        if setting and value:
-            if setting == "sensitivity":
-                wake_word_service.set_sensitivity(float(value))
-            elif setting == "keywords" or setting == "phrases":
-                wake_word_service.set_keywords(value.split(","))
-        return {"status": "success", "config": wake_word_service.get_config()}
-
-    command_registry.register_handler("wake_word_start", wake_word_start_handler)
-    command_registry.register_handler("wake_word_stop", wake_word_stop_handler)
-    command_registry.register_handler("wake_word_config", wake_word_config_handler)
 
     from app.services.routine_service import routine_service
 
@@ -503,7 +468,6 @@ client_devices: dict[int, str] = {}
 client_viewer_sessions: dict[int, str] = {}
 client_camera_viewers: dict[int, str] = {}
 introduction_pending: set[int] = set()
-client_voice_state: dict[int, dict] = {}
 
 _heartbeat_task = None
 
@@ -668,9 +632,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
 
             msg_type = message.get("type")
 
-            if msg_type == "voice_chunk":
-                asyncio.create_task(handle_voice_chunk(websocket, message, ci.profile_id))
-            elif msg_type == "text_message":
+            if msg_type == "text_message":
                 asyncio.create_task(handle_text_message(websocket, message, ci.profile_id))
             elif msg_type == "ping":
                 await safe_send(websocket,{"type": "pong"})
@@ -780,10 +742,6 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
                 await handle_morning_briefing(websocket, message)
             elif msg_type == "briefing_config":
                 await handle_briefing_config(websocket, message)
-            elif msg_type == "wake_word_start":
-                await handle_wake_word_start(websocket)
-            elif msg_type == "wake_word_stop":
-                await handle_wake_word_stop(websocket)
             elif msg_type == "wake_word_config":
                 await handle_wake_word_config(websocket, message)
             elif msg_type == "run_routine":
@@ -846,7 +804,6 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
             del connected_clients[ci.profile_id]
 
         device_id = client_devices.pop(client_id, None)
-        client_voice_state.pop(client_id, None)
 
         session_id = client_viewer_sessions.pop(client_id, None)
         if session_id:
@@ -1059,322 +1016,6 @@ async def handle_device_status_update(websocket: WebSocket, message: dict):
         "battery": message.get("battery"),
         "signal": message.get("signal"),
     }, websocket)
-
-
-async def handle_voice_chunk(websocket: WebSocket, message: dict, profile_id: str = "default"):
-    from app.services.voice_profile_service import voice_profile_service
-    from app.services.wake_word_service import wake_word_service
-
-    ws_id = id(websocket)
-
-    try:
-        if ws_id in introduction_pending:
-            introduction_pending.discard(ws_id)
-            audio_b64 = message.get("audio")
-            if not audio_b64:
-                return
-            audio_data = base64.b64decode(audio_b64)
-            stt_result = await voice_service.speech_to_text(audio_data)
-            pdata = personality_service.get_profile(profile_id)
-            name = stt_result["text"].strip().strip(".").strip()
-            name = " ".join(w.capitalize() for w in name.split() if w.isalpha())
-            if name:
-                pdata.preferred_name = name
-                pdata.introduced = True
-                pdata._save()
-                response_text = f"Nice to meet you, {name}! I will remember that. How may I assist you today?"
-            else:
-                pdata.preferred_name = "Boss"
-                pdata.introduced = True
-                pdata._save()
-                response_text = "No problem! I will call you Boss. How may I assist you today?"
-            profile = voice_profile_service.get_active_profile()
-            tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice, rate=profile.rate, pitch=profile.pitch)
-            await safe_send(websocket,{"type": "avatar_state", "state": "speaking"})
-            await safe_send(websocket,{
-                "type": "voice_response",
-                "transcription": stt_result["text"],
-                "response": response_text,
-                "audio": base64.b64encode(tts_audio).decode(),
-                "model": "introduction",
-                "is_introduction": True,
-            })
-            await safe_send(websocket,{"type": "avatar_state", "state": "idle"})
-            return
-
-        audio_b64 = message.get("audio")
-        if not audio_b64:
-            return
-
-        audio_data = base64.b64decode(audio_b64)
-        is_wake_word_check = message.get("wake_word_check", False)
-
-        if not is_wake_word_check:
-            await _process_voice_command(websocket, ws_id, audio_data, message, profile_id)
-            return
-
-        if not wake_word_service._active:
-            result = await wake_word_service.start()
-            if result.get("status") != "success" and result.get("status") != "already_active":
-                await safe_send(websocket, {
-                    "type": "wake_word_error",
-                    "message": result.get("message", "Wake word engine not available"),
-                })
-                return
-
-        detected = wake_word_service.process_bytes(audio_data)
-
-        if not detected:
-            await safe_send(websocket, {"type": "wake_word_miss"})
-            return
-
-        print(f"[WS] Wake word DETECTED")
-        client_voice_state[ws_id] = {
-            "phase": "command",
-            "buffer": bytearray(),
-            "silence_frames": 0,
-            "speech_started": False,
-        }
-        await safe_send(websocket, {
-            "type": "wake_word_detected",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-
-        try:
-            duration = len(audio_data) / 2 / 16000
-            if duration > 1.2:
-                stt_result = await voice_service.speech_to_text(audio_data)
-                command_text = _strip_wake_phrase(stt_result["text"])
-                if command_text:
-                    print(f"[WS] Command spoken in same utterance: '{command_text}'")
-                    await _process_voice_command(
-                        websocket, ws_id, audio_data, message, profile_id,
-                        transcription_override=command_text,
-                    )
-        except Exception as e:
-            print(f"[WS] Wake word tail processing error: {e}")
-
-    except Exception as e:
-        print(f"[VOICE CHUNK ERROR] {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        try:
-            from app.services.voice_profile_service import voice_profile_service as _vps
-            error_text = f"I encountered an error: {type(e).__name__}. {e}"
-            profile = _vps.get_active_profile()
-            tts_audio = await voice_service.text_to_speech(error_text, voice=profile.voice)
-
-            await safe_send(websocket,{
-                "type": "avatar_state",
-                "state": "speaking"
-            })
-
-            await safe_send(websocket,{
-                "type": "voice_response",
-                "response": error_text,
-                "audio": base64.b64encode(tts_audio).decode(),
-                "model": "error",
-            })
-
-            await safe_send(websocket,{
-                "type": "avatar_state",
-                "state": "idle"
-            })
-        except:
-            try:
-                await safe_send(websocket,{
-                    "type": "error",
-                    "message": f"Something went wrong: {type(e).__name__}: {e}"
-                })
-                await safe_send(websocket,{
-                    "type": "avatar_state",
-                    "state": "error"
-                })
-            except:
-                pass
-
-
-async def _process_voice_command(websocket: WebSocket, ws_id: int, audio_data: bytes, message: dict, profile_id: str = "default", transcription_override: str = None):
-    from app.services.voice_profile_service import voice_profile_service
-
-    import time as _time
-    _t0 = _time.time()
-    if transcription_override is not None:
-        stt_result = {"text": transcription_override, "confidence": 0.5}
-    else:
-        stt_result = await voice_service.speech_to_text(audio_data)
-    _t1 = _time.time()
-    transcription = stt_result["text"].strip().lower()
-    print(f"[WS] STT took {_t1-_t0:.1f}s: '{transcription}'")
-
-    if not transcription:
-        await safe_send(websocket, {"type": "avatar_state", "state": "idle"})
-        return
-
-    await safe_send(websocket, {
-        "type": "avatar_state",
-        "state": "thinking"
-    })
-
-    _t2 = _time.time()
-    command_result = command_registry.parse_command(transcription)
-    _t3 = _time.time()
-    print(f"[WS] Command parse took {_t3-_t2:.1f}s")
-    if command_result["matched"]:
-        pdata = personality_service.get_profile(profile_id)
-        if command_result["handler"] == "goodbye":
-            farewell_text = f"Goodbye, {pdata.preferred_name}. It was a pleasure assisting you."
-            profile = voice_profile_service.get_active_profile()
-            tts_audio = await voice_service.text_to_speech(
-                farewell_text,
-                voice=profile.voice,
-                rate=profile.rate,
-                pitch=profile.pitch,
-            )
-
-            await safe_send(websocket,{
-                "type": "avatar_state",
-                "state": "speaking"
-            })
-
-            await safe_send(websocket,{
-                "type": "voice_response",
-                "transcription": transcription,
-                "response": farewell_text,
-                "audio": base64.b64encode(tts_audio).decode(),
-                "model": "farewell",
-                "is_farewell": True,
-                "exit_app": True,
-            })
-            return
-
-        handler_name = command_result["handler"]
-        quick_response = COMMAND_RESPONSES.get(handler_name)
-
-        if quick_response is not None:
-            execution_task = asyncio.create_task(
-                command_registry.execute_command(transcription)
-            )
-
-            profile = voice_profile_service.get_active_profile()
-            tts_task = asyncio.create_task(
-                voice_service.text_to_speech(quick_response, voice=profile.voice)
-            )
-
-            execution, tts_audio = await asyncio.gather(execution_task, tts_task)
-
-            await safe_send(websocket,{
-                "type": "command_response",
-                "transcription": transcription,
-                "command": command_result,
-                "result": execution,
-            })
-
-            await safe_send(websocket,{
-                "type": "avatar_state",
-                "state": "speaking"
-            })
-
-            await safe_send(websocket,{
-                "type": "voice_response",
-                "transcription": transcription,
-                "confidence": stt_result["confidence"],
-                "response": quick_response,
-                "audio": base64.b64encode(tts_audio).decode(),
-                "model": "command_registry",
-                "is_command": True,
-            })
-
-            await safe_send(websocket,{
-                "type": "avatar_state",
-                "state": "idle"
-            })
-            return
-
-        execution = await command_registry.execute_command(transcription)
-
-        result_data = execution.get("result", {})
-        result_message = result_data.get("message", "Command executed.")
-
-        profile = voice_profile_service.get_active_profile()
-        try:
-            llm_response = await voice_service.chat_completion(
-                message=f"The user said: \"{transcription}\"\nCommand result: {result_message}\n\nRespond with a short natural sentence (1-2 lines) about what was done.",
-                system_prompt=_build_system_prompt("Keep responses under 2 sentences.", transcription, profile_id),
-                profile_id=profile_id,
-            )
-            response_text = llm_response["response"]
-        except:
-            response_text = result_message if result_message and result_message != "Command executed." else "All done."
-
-        tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice)
-
-        await safe_send(websocket,{
-            "type": "command_response",
-            "transcription": transcription,
-            "command": command_result,
-            "result": execution,
-        })
-
-        await safe_send(websocket,{
-            "type": "avatar_state",
-            "state": "speaking"
-        })
-
-        await safe_send(websocket,{
-            "type": "voice_response",
-            "transcription": transcription,
-            "confidence": stt_result["confidence"],
-            "response": response_text,
-            "audio": base64.b64encode(tts_audio).decode(),
-            "model": "command_registry",
-            "is_command": True,
-        })
-
-        await safe_send(websocket,{
-            "type": "avatar_state",
-            "state": "idle"
-        })
-        return
-
-    _t4 = _time.time()
-    llm_result = await voice_service.chat_completion(
-        message=transcription,
-        system_prompt=message.get("system_prompt") or personality_service.get_system_prompt(profile_id),
-        profile_id=profile_id,
-    )
-    _t5 = _time.time()
-    print(f"[WS] LLM took {_t5-_t4:.1f}s")
-
-    _t6 = _time.time()
-    profile = voice_profile_service.get_active_profile()
-    tts_audio = await voice_service.text_to_speech(
-        text=llm_result["response"],
-        voice=profile.voice,
-        rate=profile.rate,
-        pitch=profile.pitch,
-    )
-    _t7 = _time.time()
-    print(f"[WS] TTS took {_t7-_t6:.1f}s (total: {_t7-_t0:.1f}s)")
-
-    await safe_send(websocket,{
-        "type": "avatar_state",
-        "state": "speaking"
-    })
-
-    await safe_send(websocket,{
-        "type": "voice_response",
-        "transcription": transcription,
-        "confidence": stt_result["confidence"],
-        "response": llm_result["response"],
-        "audio": base64.b64encode(tts_audio).decode(),
-        "model": llm_result["model"]
-    })
-
-    await safe_send(websocket,{
-        "type": "avatar_state",
-        "state": "idle"
-    })
 
 
 async def handle_text_message(websocket: WebSocket, message: dict, profile_id: str = "default"):
@@ -2682,33 +2323,6 @@ async def handle_voice_mode_stop(websocket: WebSocket):
     session = voice_sessions.pop(ws_id, None)
     if session is not None:
         await session.stop()
-
-
-async def handle_wake_word_start(websocket: WebSocket):
-    from app.services.wake_word_service import wake_word_service
-
-    async def on_wake(text: str):
-        await safe_send(websocket, {
-            "type": "wake_word_detected",
-            "text": text,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-
-    wake_word_service.set_wake_callback(on_wake)
-    result = await wake_word_service.start()
-    await safe_send(websocket, {
-        "type": "wake_word_result",
-        "result": result,
-    })
-
-
-async def handle_wake_word_stop(websocket: WebSocket):
-    from app.services.wake_word_service import wake_word_service
-    result = await wake_word_service.stop()
-    await safe_send(websocket, {
-        "type": "wake_word_result",
-        "result": result,
-    })
 
 
 async def handle_wake_word_config(websocket: WebSocket, message: dict):
