@@ -33,7 +33,6 @@ class _HomeScreenState extends State<HomeScreen> {
   String _transcription = '';
   bool _isConnected = false;
   bool _wordPulse = false;
-  bool _isListening = false;
   bool _wakeWordMode = false;
   VoicePhase _voicePhase = VoicePhase.idle;
   final TextEditingController _chatController = TextEditingController();
@@ -105,10 +104,12 @@ class _HomeScreenState extends State<HomeScreen> {
           final enabled = _settingsService?.wakeWordEnabled ?? true;
           if (!enabled) return;
           final started = await _voiceService.startWakeWordMode();
-          if (mounted) setState(() {
-            _wakeWordMode = started;
-            _voicePhase = VoicePhase.idle;
-          });
+          if (mounted) {
+            setState(() {
+              _wakeWordMode = started;
+              _voicePhase = VoicePhase.idle;
+            });
+          }
         });
       }
     });
@@ -126,7 +127,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _phaseSubscription = _voiceService.phase.listen((phase) {
       if (mounted && _wakeWordMode) {
         setState(() {
-          _isListening = phase != VoicePhase.idle;
           _voicePhase = phase;
         });
       }

@@ -423,6 +423,7 @@ class VoiceSession:
 
     async def _emit_error(self, message: str):
         self.phase = SessionPhase.LISTENING
+        self._reset_command_buffers()
         await self._send({"type": "voice_error", "message": message})
         await self._send({"type": "voice_phase", "phase": self.phase.value})
 
