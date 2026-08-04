@@ -247,7 +247,23 @@ class VoiceSession:
             await self._vad_scan(frame)
 
     async def _wake_scan(self, frame: bytes):
-        pass  # Task 2
+        audio = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32768.0
+        scores = self._wake_model.predict(audio)
+        score = max(float(scores.get(m, 0.0)) for m in self._model_names)
+        if score <= self._threshold:
+            return
+        now = time.monotonic()
+        if now - self._last_detection < SUPPRESSION_SECONDS:
+            return
+        self._last_detection = now
+        self._wake_model.reset()
+        self._reset_command_buffers()
+        self.phase = SessionPhase.COMMAND
+        await self._send({
+            "type": "wake_word_detected",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        await self._send({"type": "voice_phase", "phase": self.phase.value})
 
     async def _vad_scan(self, frame: bytes):
         pass  # Task 3

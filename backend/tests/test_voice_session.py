@@ -132,3 +132,56 @@ async def test_feed_pcm_puts_decoded_bytes_on_queue():
     await session.feed_pcm(encoded)
     item = session._queue.get_nowait()
     assert item == b"\x00\x01\x02\x03"
+
+
+@pytest.mark.anyio
+async def test_wake_detection_transitions_to_command():
+    send = SendCollector()
+    session = VoiceSession(send)
+    session._wake_model = FakeWakeModel(score=0.9)
+    await session._process_audio(SILENT_FRAME)
+    assert any(m["type"] == "wake_word_detected" for m in send.messages)
+    assert session.phase == SessionPhase.COMMAND
+    phases = [m["phase"] for m in send.messages if m["type"] == "voice_phase"]
+    assert phases == ["command"]
+
+
+@pytest.mark.anyio
+async def test_no_detection_below_threshold():
+    send = SendCollector()
+    session = VoiceSession(send)
+    session._wake_model = FakeWakeModel(score=0.1)
+    await session._process_audio(SILENT_FRAME)
+    assert not any(m["type"] == "wake_word_detected" for m in send.messages)
+    assert session.phase == SessionPhase.LISTENING
+
+
+@pytest.mark.anyio
+async def test_detection_suppressed_within_one_second():
+    send = SendCollector()
+    session = VoiceSession(send)
+    session._wake_model = FakeWakeModel(score=0.9)
+    session._last_detection = time.monotonic()
+    await session._process_audio(SILENT_FRAME)
+    assert not any(m["type"] == "wake_word_detected" for m in send.messages)
+
+
+@pytest.mark.anyio
+async def test_detection_during_speaking_barge_in():
+    send = SendCollector()
+    session = VoiceSession(send)
+    session._wake_model = FakeWakeModel(score=0.9)
+    session.phase = SessionPhase.SPEAKING
+    await session._process_audio(SILENT_FRAME)
+    assert session.phase == SessionPhase.COMMAND
+    assert any(m["type"] == "wake_word_detected" for m in send.messages)
+
+
+@pytest.mark.anyio
+async def test_wake_model_reset_after_detection():
+    send = SendCollector()
+    session = VoiceSession(send)
+    model = FakeWakeModel(score=0.9)
+    session._wake_model = model
+    await session._process_audio(SILENT_FRAME)
+    assert model.reset_calls == 1
