@@ -47,7 +47,7 @@ client/
 - `backend/app/services/news_service.py` — RSS news headlines
 - `backend/app/services/email_service.py` — Gmail integration
 - `backend/app/services/routine_service.py` — Multi-step automation routines
-- `backend/app/services/wake_word_service.py` — openWakeWord detection
+- `backend/app/services/voice_session_service.py` — per-connection `VoiceSession` voice loop (openWakeWord + Silero VAD)
 - `backend/app/services/suggestion_engine.py` — Proactive suggestions
 - `backend/app/services/personality_enhancer.py` — Jarvis wit/flair
 - `backend/app/services/device_mesh_service.py` — Cross-device orchestration

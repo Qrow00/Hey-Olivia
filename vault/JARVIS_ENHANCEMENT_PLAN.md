@@ -49,15 +49,17 @@
 
 | Component | File | Description |
 |---|---|---|
-| Wake Word Service | `backend/app/services/wake_word_service.py` | Local Whisper (tiny model) running on continuous audio buffer |
-| VAD | Integration with webrtcvad or silero-vad | Detect speech vs silence |
-| Wake Word Matching | Inside wake_word_service.py | Check transcribed audio for "hey jarvis" / "jarvis" |
-| Activation Pipeline | `backend/app/routers/websocket.py` | On detection → full STT → command pipeline |
-| GPU Acceleration | Whisper.cpp with GPU offload | GTX 1050 via CUDA |
+| Voice Session | `backend/app/services/voice_session_service.py` | Per-connection `VoiceSession` state machine (LISTENING → COMMAND → THINKING → SPEAKING) owns the full streaming voice loop |
+| Wake Word Detection | openWakeWord inside VoiceSession | `hey_jarvis` scored frame-by-frame (1280 samples/80ms) on the continuous 16kHz s16 PCM stream |
+| VAD | openwakeword.vad.VAD (silero_vad.onnx) | Command endpointing: 480-sample chunks, onset/offset counters |
+| Activation Pipeline | `backend/app/routers/websocket.py` | `audio_frame` frames feed the session; detection → STT → command pipeline → TTS → `voice_response` |
+| Barge-in | VoiceSession | Wake re-detection during SPEAKING interrupts playback; wake word required every turn |
 
 **New command handlers:**
-- `wake_word_start` — start listening
-- `wake_word_stop` — stop listening
+- `voice_mode_start` — start the streaming voice session
+- `audio_frame` — stream raw s16 PCM frames
+- `tts_done` — TTS playback finished → back to listening
+- `voice_mode_stop` — tear down the session
 - `wake_word_config` — sensitivity, wake phrase
 
 ---

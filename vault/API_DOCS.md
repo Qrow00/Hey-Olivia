@@ -200,7 +200,11 @@ ws://localhost:8000/ws
 | Event | Description |
 |-------|-------------|
 | `ping` | Keepalive |
-| `voice_chunk` | Send audio for STT |
+| **Voice Mode** | |
+| `voice_mode_start` | Start voice session (params: `sample_rate: 16000`) |
+| `audio_frame` | Stream raw s16 PCM (params: `audio: base64(pcm)`) |
+| `tts_done` | TTS playback finished → server returns to listening |
+| `voice_mode_stop` | Tear down voice session |
 | `text_message` | Send text message |
 | `device_register` | Register device |
 | `device_heartbeat` | Device heartbeat |
@@ -222,9 +226,7 @@ ws://localhost:8000/ws
 | `morning_briefing` | Generate morning briefing (params: `include_tts`) |
 | `briefing_config` | Update briefing sources (params: `sources`) |
 | **Wake Word** | |
-| `wake_word_start` | Start wake word detection |
-| `wake_word_stop` | Stop wake word detection |
-| `wake_word_config` | Update config (params: `phrases`, `sensitivity`) |
+| `wake_word_config` | Update config (params: `setting`, `value`) — kept; legacy `wake_word_start`/`wake_word_stop` are replaced by `voice_mode_start`/`voice_mode_stop` |
 | **Routines** | |
 | `run_routine` | Run a routine (params: `name`) |
 | `create_routine` | Create routine (params: `name`, `description`, `steps`, `trigger_phrase`) |
@@ -276,7 +278,10 @@ ws://localhost:8000/ws
 |-------|-------------|
 | `pong` | Keepalive response |
 | `avatar_state` | Avatar state change |
-| `voice_response` | Voice response with audio |
+| `voice_mode_ready` | Session ready (params: `status`) — streaming may begin |
+| `voice_phase` | Phase sync (params: `phase`: `listening`/`command`/`thinking`/`speaking`) |
+| `voice_response` | Voice response: `{transcription, response, audio, model}` plus optional `is_introduction`/`is_farewell`/`exit_app` |
+| `voice_error` | Voice error (params: `message`) |
 | `text_response` | Text response |
 | `command_response` | Command execution result |
 | `camera_frame` | Camera frame data |
@@ -298,7 +303,7 @@ ws://localhost:8000/ws
 | `briefing_result` | Generated briefing data |
 | `briefing_config` | Current briefing config |
 | **Wake Word** | |
-| `wake_word_detected` | Wake word phrase detected |
+| `wake_word_detected` | Wake word detected (params: `timestamp`); during SPEAKING also means interrupt playback (barge-in) |
 | `wake_word_result` | Start/stop result |
 | `wake_word_config` | Current wake word config |
 | **Routines** | |
