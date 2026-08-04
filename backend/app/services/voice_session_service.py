@@ -266,10 +266,35 @@ class VoiceSession:
         await self._send({"type": "voice_phase", "phase": self.phase.value})
 
     async def _vad_scan(self, frame: bytes):
-        pass  # Task 3
+        self._vad_buffer.extend(frame)
+        while len(self._vad_buffer) >= VAD_CHUNK_BYTES:
+            chunk = bytes(self._vad_buffer[:VAD_CHUNK_BYTES])
+            del self._vad_buffer[:VAD_CHUNK_BYTES]
+            prob = float(self._vad.predict(np.frombuffer(chunk, dtype=np.int16)))
+            await self._track_vad(prob, chunk)
 
     async def _track_vad(self, prob: float, chunk: bytes):
-        pass  # Task 3
+        if prob > VAD_THRESHOLD:
+            self._silence_frames = 0
+            if not self._in_speech:
+                self._speech_frames += 1
+                if self._speech_frames >= ONSET_FRAMES:
+                    self._in_speech = True
+                    self._speech_frames = 0
+        else:
+            self._speech_frames = 0
+            if self._in_speech:
+                self._silence_frames += 1
+                if self._silence_frames >= OFFSET_FRAMES:
+                    await self._finalize()
+                    return
+            else:
+                self._silence_frames = 0
+            return
+        if self._in_speech:
+            self._command_buffer.extend(chunk)
+            if len(self._command_buffer) // 2 >= MAX_COMMAND_SECONDS * 16000:
+                await self._finalize()
 
     async def _finalize(self):
         pass  # Task 4

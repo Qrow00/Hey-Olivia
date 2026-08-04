@@ -11,6 +11,9 @@ from app.services.voice_session_service import (
     strip_wake_phrase,
     FRAME_BYTES,
     VAD_CHUNK_BYTES,
+    VAD_CHUNK_LENGTH,
+    ONSET_FRAMES,
+    OFFSET_FRAMES,
 )
 
 
@@ -185,3 +188,43 @@ async def test_wake_model_reset_after_detection():
     session._wake_model = model
     await session._process_audio(SILENT_FRAME)
     assert model.reset_calls == 1
+
+
+@pytest.mark.anyio
+async def test_vad_scan_chunks_into_480_sample_units():
+    send = SendCollector()
+    session = VoiceSession(send)
+    vad = FakeVad([0.5] * 10)
+    session._vad = vad
+    session.phase = SessionPhase.COMMAND
+    await session._process_audio(SILENT_FRAME)
+    assert len(vad.chunks) == 2
+    assert all(len(c) == VAD_CHUNK_LENGTH for c in vad.chunks)
+    assert all(c.dtype == np.int16 for c in vad.chunks)
+    assert len(session._vad_buffer) == FRAME_BYTES - 2 * VAD_CHUNK_BYTES
+
+
+@pytest.mark.anyio
+async def test_track_vad_onset_sets_in_speech_after_five_chunks():
+    send = SendCollector()
+    session = VoiceSession(send)
+    for _ in range(ONSET_FRAMES):
+        await session._track_vad(0.9, bytes(VAD_CHUNK_BYTES))
+    assert session._in_speech is True
+    assert len(session._command_buffer) == VAD_CHUNK_BYTES
+
+
+@pytest.mark.anyio
+async def test_track_vad_offset_triggers_finalize():
+    send = SendCollector()
+    calls = []
+    session = VoiceSession(send)
+
+    async def finalize_stub():
+        calls.append(True)
+
+    session._finalize = finalize_stub
+    session._in_speech = True
+    for _ in range(OFFSET_FRAMES):
+        await session._track_vad(0.1, bytes(VAD_CHUNK_BYTES))
+    assert calls == [True]
