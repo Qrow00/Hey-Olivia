@@ -1,10 +1,29 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import 'screens/specs_check_screen.dart';
+import 'package:window_manager/window_manager.dart';
+import 'screens/onboarding_screen.dart';
+import 'screens/main_screen.dart';
+import 'services/server_config.dart';
 
-void main() {
+const _bg = Color(0xFF080818);
+const _hud = Color(0xFF00e5ff);
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    await windowManager.ensureInitialized();
+    final options = WindowOptions(
+      size: Size(420, 820),
+      center: true,
+      title: 'J.A.R.V.I.S.',
+      titleBarStyle: TitleBarStyle.normal,
+    );
+    await windowManager.waitUntilReadyToShow(options, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    });
+  }
   runApp(const JarvisApp());
 }
 
@@ -17,20 +36,18 @@ class JarvisApp extends StatefulWidget {
 
 class _JarvisAppState extends State<JarvisApp> {
   bool _loading = true;
-  bool _setupComplete = false;
+  bool _hasConfig = false;
 
   @override
   void initState() {
     super.initState();
-    _checkSetup();
+    _checkConfig();
   }
 
-  Future<void> _checkSetup() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final flag = File('${dir.path}/.jarvis_setup_complete');
-    final exists = await flag.exists();
+  Future<void> _checkConfig() async {
+    final config = await ServerConfig.resolve();
     setState(() {
-      _setupComplete = exists;
+      _hasConfig = config != null;
       _loading = false;
     });
   }
@@ -41,12 +58,12 @@ class _JarvisAppState extends State<JarvisApp> {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: ThemeData.dark().copyWith(
-          scaffoldBackgroundColor: Color(0xFF0a0a1a),
+          scaffoldBackgroundColor: _bg,
         ),
         home: Scaffold(
-          backgroundColor: Color(0xFF0a0a1a),
+          backgroundColor: _bg,
           body: Center(
-            child: CircularProgressIndicator(color: Color(0xFF00e5ff)),
+            child: CircularProgressIndicator(color: _hud),
           ),
         ),
       );
@@ -57,9 +74,11 @@ class _JarvisAppState extends State<JarvisApp> {
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         primaryColor: Colors.cyan,
-        scaffoldBackgroundColor: Color(0xFF0a0a1a),
+        scaffoldBackgroundColor: _bg,
       ),
-      home: _setupComplete ? JarvisMainScreen(initialTier: 'auto') : SpecsCheckScreen(),
+      home: _hasConfig
+          ? MainScreen()
+          : OnboardingScreen(initialStep: 0),
     );
   }
 }

@@ -16,5 +16,5 @@ Everything runs local: Ollama for LLM, Whisper for STT, Edge-TTS as only cloud d
 ## Consequences
 - Complete privacy — no data leaves the LAN
 - No API costs
-- Requires capable local hardware (HP EliteDesk + RX 6600)
-- Quality ceiling is Ollama model size (8GB VRAM limits to 7B params)
+- Requires capable local hardware (HP EliteDesk + GTX 1050)
+- Quality ceiling is Ollama model size (CPU-run llama3.2 on 2GB)

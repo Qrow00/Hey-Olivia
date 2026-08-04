@@ -40,7 +40,7 @@ class SmartHomeService {
 
   Future<List<SmartDevice>> fetchDevices() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/smart-home'));
+      final response = await http.get(Uri.parse('$baseUrl/api/v1/smart-home'));
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         _devices = data.map((d) => SmartDevice.fromJson(d)).toList();
@@ -54,7 +54,7 @@ class SmartHomeService {
 
   Future<List<String>> fetchRooms() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/smart-home/rooms'));
+      final response = await http.get(Uri.parse('$baseUrl/api/v1/smart-home/rooms'));
       if (response.statusCode == 200) {
         return List<String>.from(json.decode(response.body));
       }
@@ -74,7 +74,7 @@ class SmartHomeService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/api/smart-home'),
+        Uri.parse('$baseUrl/api/v1/smart-home'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'name': name,
@@ -97,7 +97,7 @@ class SmartHomeService {
 
   Future<void> removeDevice(String deviceId) async {
     try {
-      await http.delete(Uri.parse('$baseUrl/api/smart-home/$deviceId'));
+      await http.delete(Uri.parse('$baseUrl/api/v1/smart-home/$deviceId'));
       _devices.removeWhere((d) => d.id == deviceId);
     } catch (e) {
       print('Error removing device: $e');
@@ -131,7 +131,7 @@ class SmartHomeService {
   Future<void> _control(String deviceId, String action, [Map<String, dynamic>? params]) async {
     try {
       await http.post(
-        Uri.parse('$baseUrl/api/smart-home/$deviceId/control'),
+        Uri.parse('$baseUrl/api/v1/smart-home/$deviceId/control'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'action': action,
@@ -219,7 +219,7 @@ class SmartHomeService {
   }) async {
     try {
       await http.post(
-        Uri.parse('$baseUrl/api/smart-home/mqtt/connect'),
+        Uri.parse('$baseUrl/api/v1/smart-home/mqtt/connect'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'broker': broker,

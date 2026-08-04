@@ -7,7 +7,7 @@ Proactive system awareness — Jarvis watches your PC and reports issues.
 - CPU usage
 - RAM usage
 - Disk space
-- GPU temperature (RX 6600)
+- GPU temperature (GTX 1050)
 - Network status
 
 ## Alert Thresholds
@@ -50,5 +50,5 @@ Proactive system awareness — Jarvis watches your PC and reports issues.
 
 - [[JARVIS_ENHANCEMENT_PLAN]] — Phase 1 monitoring
 - [[API_DOCS]] — monitoring events
-- [[AGENTS]] — GPU specs (RX 6600)
+- [[AGENTS]] — GPU specs (GTX 1050)
 - [[Memory Map]] — vault index

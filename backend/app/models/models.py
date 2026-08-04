@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, JSON, Boolean, Integer, ForeignKey
+from sqlalchemy import Column, String, DateTime, JSON, Boolean, Integer, Float, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from app.models.database import Base
@@ -81,3 +81,35 @@ class Command(Base):
     handler = Column(String, nullable=False)
     requires_auth = Column(Boolean, default=False)
     enabled = Column(Boolean, default=True)
+
+
+class WearableDeviceDB(Base):
+    __tablename__ = "wearable_devices"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column(String, primary_key=True)
+    user_id = Column(String, default="default")
+    name = Column(String, nullable=False)
+    type = Column(String, nullable=False)
+    platform = Column(String, nullable=False)
+    is_online = Column(Boolean, default=False)
+    battery = Column(Integer, default=100)
+    firmware_version = Column(String, default="")
+    last_sync = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    health_metrics = relationship("HealthMetricDB", back_populates="device", cascade="all, delete-orphan")
+
+
+class HealthMetricDB(Base):
+    __tablename__ = "health_metrics"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(String, ForeignKey("wearable_devices.id"), nullable=False)
+    metric = Column(String, nullable=False)
+    value = Column(Float, nullable=False)
+    unit = Column(String, default="")
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    device = relationship("WearableDeviceDB", back_populates="health_metrics")

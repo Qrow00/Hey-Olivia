@@ -20,6 +20,7 @@ from app.services.command_registry import command_registry
 from app.services.conversation_memory import conversation_memory
 from app.services.knowledge_service import knowledge_service
 from app.services.settings_service import settings_service
+from app.services.hardware_detector import stt_device as detect_stt_device
 
 
 class VoiceService:
@@ -33,14 +34,20 @@ class VoiceService:
     def _get_model(self, profile_id: str = "default") -> str:
         return settings_service.get(profile_id, "voice", "llm_model") or self.llm_model
 
+    def _get_stt_model(self, profile_id: str = "default") -> str:
+        return settings_service.get(profile_id, "voice", "stt_model") or "tiny"
+
     async def initialize(self):
         if self._initialized:
             return
-        import torch
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
-        self._fp16 = self._device == "cuda"
-        print(f"Loading Whisper STT model (base, {self._device})...")
-        self.stt_model = whisper.load_model("base", device=self._device)
+        self._device = detect_stt_device()
+        self._fp16 = False
+        stt_model = self._get_stt_model()
+        print(f"Loading Whisper STT model ({stt_model}, {self._device})...")
+        if self._device == "cuda":
+            import torch
+            torch.cuda.set_per_process_memory_fraction(0.5)
+        self.stt_model = whisper.load_model(stt_model, device=self._device)
         self.llm_model = self._get_model()
         print(f"Voice service initialized, warming {self.llm_model}...")
         try:
@@ -76,6 +83,9 @@ class VoiceService:
                 ),
                 timeout=30
             )
+            if self._device == "cuda":
+                import torch
+                torch.cuda.empty_cache()
             return {
                 "text": result["text"],
                 "language": result.get("language", language),

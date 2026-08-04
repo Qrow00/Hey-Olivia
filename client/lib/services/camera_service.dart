@@ -94,7 +94,7 @@ class CameraService {
 
   Future<List<CameraDevice>> fetchCameras() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/cameras'));
+      final response = await http.get(Uri.parse('$baseUrl/api/v1/cameras'));
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         _cameras = data.map((c) => CameraDevice.fromJson(c)).toList();
@@ -116,7 +116,7 @@ class CameraService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/api/cameras'),
+        Uri.parse('$baseUrl/api/v1/cameras'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'name': name,
@@ -139,7 +139,7 @@ class CameraService {
 
   Future<void> removeCamera(String cameraId) async {
     try {
-      await http.delete(Uri.parse('$baseUrl/api/cameras/$cameraId'));
+      await http.delete(Uri.parse('$baseUrl/api/v1/cameras/$cameraId'));
       _cameras.removeWhere((c) => c.id == cameraId);
     } catch (e) {
       print('Error removing camera: $e');

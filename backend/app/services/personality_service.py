@@ -46,11 +46,10 @@ class Opinion:
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
 
-class PersonalityService:
-    def __init__(self, data_dir: str = "data/personality"):
-        self.data_dir = Path(data_dir)
+class ProfileData:
+    def __init__(self, data_dir: Path):
+        self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
-
         self.style = StyleProfile()
         self.opinions: list[Opinion] = []
         self.reflections: list[dict] = []
@@ -58,7 +57,6 @@ class PersonalityService:
         self.user_preferences: dict = {}
         self.interaction_count: int = 0
         self.introduced: bool = False
-
         self._load()
 
     def _load(self):
@@ -102,18 +100,30 @@ class PersonalityService:
             "reflections": self.reflections[-50:]
         }, indent=2))
 
-    def get_system_prompt(self) -> str:
-        style_desc = self.style.to_prompt()
+
+class PersonalityService:
+    def __init__(self, data_dir: str = "data/personality"):
+        self._base_dir = Path(data_dir)
+        self._profiles: dict[str, ProfileData] = {}
+
+    def _profile(self, profile_id: str) -> ProfileData:
+        if profile_id not in self._profiles:
+            self._profiles[profile_id] = ProfileData(self._base_dir / profile_id)
+        return self._profiles[profile_id]
+
+    def get_system_prompt(self, profile_id: str = "default") -> str:
+        p = self._profile(profile_id)
+        style_desc = p.style.to_prompt()
         opinion_text = ""
-        if self.opinions:
-            recent = self.opinions[-5:]
+        if p.opinions:
+            recent = p.opinions[-5:]
             opinion_text = "\nYour known opinions:\n" + "\n".join(
                 f"- {o.topic}: {o.stance} (confidence: {o.confidence:.0%})"
                 for o in recent
             )
 
         return (
-            f"You are JARVIS, an AI assistant. Address the user as '{self.preferred_name}'. "
+            f"You are JARVIS, an AI assistant. Address the user as '{p.preferred_name}'. "
             f"Your communication style: {style_desc}. "
             f"You have your own opinions and personality. "
             f"You remember past conversations and learn from them. "
@@ -126,87 +136,94 @@ class PersonalityService:
             f"{opinion_text}"
         )
 
-    def update_style(self, **kwargs) -> dict:
+    def update_style(self, profile_id: str = "default", **kwargs) -> dict:
+        p = self._profile(profile_id)
         for key, value in kwargs.items():
-            if hasattr(self.style, key):
-                setattr(self.style, key, max(0.0, min(1.0, float(value))))
-        self._save()
-        return {"status": "updated", "style": asdict(self.style)}
+            if hasattr(p.style, key):
+                setattr(p.style, key, max(0.0, min(1.0, float(value))))
+        p._save()
+        return {"status": "updated", "style": asdict(p.style)}
 
-    def learn_opinion(self, topic: str, stance: str, source: str = "conversation") -> dict:
-        existing = next((o for o in self.opinions if o.topic.lower() == topic.lower()), None)
+    def learn_opinion(self, topic: str, stance: str, source: str = "conversation", profile_id: str = "default") -> dict:
+        p = self._profile(profile_id)
+        existing = next((o for o in p.opinions if o.topic.lower() == topic.lower()), None)
         if existing:
             existing.stance = stance
             existing.timestamp = datetime.now().isoformat()
             existing.learned_from = source
         else:
-            self.opinions.append(Opinion(
+            p.opinions.append(Opinion(
                 topic=topic,
                 stance=stance,
                 confidence=0.6,
                 learned_from=source,
             ))
-        self._save()
+        p._save()
         return {"status": "learned", "topic": topic, "stance": stance}
 
-    def learn_preference(self, key: str, value: str) -> dict:
-        self.user_preferences[key] = value
-        self._save()
+    def learn_preference(self, key: str, value: str, profile_id: str = "default") -> dict:
+        p = self._profile(profile_id)
+        p.user_preferences[key] = value
+        p._save()
         return {"status": "learned", "key": key, "value": value}
 
-    def reflect(self, context: str = "") -> str:
-        self.interaction_count += 1
-
+    def reflect(self, context: str = "", profile_id: str = "default") -> str:
+        p = self._profile(profile_id)
+        p.interaction_count += 1
         reflection = {
             "timestamp": datetime.now().isoformat(),
-            "interaction_count": self.interaction_count,
+            "interaction_count": p.interaction_count,
             "context": context,
-            "style_snapshot": asdict(self.style),
-            "opinion_count": len(self.opinions),
+            "style_snapshot": asdict(p.style),
+            "opinion_count": len(p.opinions),
         }
-        self.reflections.append(reflection)
-        self._save()
-
-        if self.interaction_count % 10 == 0:
-            return self._generate_growth_reflection()
+        p.reflections.append(reflection)
+        p._save()
+        if p.interaction_count % 10 == 0:
+            return self._generate_growth_reflection(profile_id)
         return ""
 
-    def _generate_growth_reflection(self) -> str:
-        topics = set(o.topic for o in self.opinions)
+    def _generate_growth_reflection(self, profile_id: str = "default") -> str:
+        p = self._profile(profile_id)
+        topics = set(o.topic for o in p.opinions)
         return (
-            f"I've had {self.interaction_count} interactions with you. "
-            f"I currently have {len(self.opinions)} opinions on topics like: {', '.join(list(topics)[:5])}. "
-            f"My communication style is: {self.style.to_prompt()}. "
+            f"I've had {p.interaction_count} interactions with you. "
+            f"I currently have {len(p.opinions)} opinions on topics like: {', '.join(list(topics)[:5])}. "
+            f"My communication style is: {p.style.to_prompt()}. "
             f"I'm learning and adapting with each conversation."
         )
 
-    def adjust_from_feedback(self, feedback_type: str) -> dict:
+    def adjust_from_feedback(self, feedback_type: str, profile_id: str = "default") -> dict:
+        p = self._profile(profile_id)
         if feedback_type == "too_formal":
-            self.style.formality = max(0.0, self.style.formality - 0.1)
+            p.style.formality = max(0.0, p.style.formality - 0.1)
         elif feedback_type == "too_casual":
-            self.style.formality = min(1.0, self.style.formality + 0.1)
+            p.style.formality = min(1.0, p.style.formality + 0.1)
         elif feedback_type == "too_long":
-            self.style.verbosity = max(0.0, self.style.verbosity - 0.15)
+            p.style.verbosity = max(0.0, p.style.verbosity - 0.15)
         elif feedback_type == "too_brief":
-            self.style.verbosity = min(1.0, self.style.verbosity + 0.15)
+            p.style.verbosity = min(1.0, p.style.verbosity + 0.15)
         elif feedback_type == "more_humor":
-            self.style.humor = min(1.0, self.style.humor + 0.1)
+            p.style.humor = min(1.0, p.style.humor + 0.1)
         elif feedback_type == "less_humor":
-            self.style.humor = max(0.0, self.style.humor - 0.1)
+            p.style.humor = max(0.0, p.style.humor - 0.1)
         elif feedback_type == "more_empathy":
-            self.style.empathy = min(1.0, self.style.empathy + 0.1)
+            p.style.empathy = min(1.0, p.style.empathy + 0.1)
+        p._save()
+        return {"status": "adjusted", "style": asdict(p.style)}
 
-        self._save()
-        return {"status": "adjusted", "style": asdict(self.style)}
+    def get_profile(self, profile_id: str = "default") -> ProfileData:
+        return self._profile(profile_id)
 
-    def get_status(self) -> dict:
+    def get_status(self, profile_id: str = "default") -> dict:
+        p = self._profile(profile_id)
         return {
-            "style": asdict(self.style),
-            "preferred_name": self.preferred_name,
-            "opinion_count": len(self.opinions),
-            "interaction_count": self.interaction_count,
-            "reflection_count": len(self.reflections),
-            "preferences": self.user_preferences,
+            "style": asdict(p.style),
+            "preferred_name": p.preferred_name,
+            "opinion_count": len(p.opinions),
+            "interaction_count": p.interaction_count,
+            "reflection_count": len(p.reflections),
+            "preferences": p.user_preferences,
         }
 
 

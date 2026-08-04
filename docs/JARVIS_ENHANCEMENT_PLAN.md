@@ -53,7 +53,7 @@
 | VAD | Integration with webrtcvad or silero-vad | Detect speech vs silence |
 | Wake Word Matching | Inside wake_word_service.py | Check transcribed audio for "hey jarvis" / "jarvis" |
 | Activation Pipeline | `backend/app/routers/websocket.py` | On detection → full STT → command pipeline |
-| GPU Acceleration | Whisper.cpp with GPU offload | RX 6600 via ROCm |
+| GPU Acceleration | Whisper.cpp with GPU offload | GTX 1050 via CUDA |
 
 **New command handlers:**
 - `wake_word_start` — start listening

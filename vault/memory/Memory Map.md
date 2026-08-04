@@ -17,11 +17,14 @@ Persistent knowledge for opencode sessions. Linked from `.opencode/memory.md`.
 - [[Local-first architecture no cloud APIs]]
 
 ## Learnings
-- [[RX 6600 RDNA 2 limitations]]
+- [[GTX 1050 cannot JIT Ollama CUDA PTX]]
 
 ## Context
 - [[Project scope]]
 - [[Hardware setup]]
+
+## Reminders (temporary — act on these)
+- [[Laptop random shutdown diagnosis]] — ACTIVE: run thermal logger under load before next shutdown
 
 ## Feature Docs (vault root)
 | Note | Content |

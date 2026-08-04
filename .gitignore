@@ -31,3 +31,11 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+
+# Logs
+*.log
+backend/logs/
+/data/
+
+# Local models
+models/

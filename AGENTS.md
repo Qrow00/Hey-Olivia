@@ -1,46 +1,14 @@
-# Jarvis AI Assistant — Project Rules
+# J.A.R.V.I.S. — opencode Instructions
 
-## Architecture
+Project architecture, structure, conventions, and local models are in **`vault/AGENTS.md`** (canonical source).
 
-- **Backend:** Python 3.11+ / FastAPI + SQLite (async via aiosqlite)
-- **Client:** Flutter (Dart) — voice-first UI
-- **AI:** Ollama (local LLMs) + Whisper (local STT)
-- **Voice:** edge-tts (TTS), Chatterbox TTS (Phase 8 — voice cloning)
-- **Smart Home:** MQTT + Tasmota devices
-- **Browser:** Playwright (hermes_browser.py)
-- **Target hardware:** HP EliteDesk, AMD RX 6600 (RDNA 2, 8GB VRAM)
+## TEMPORARY — Active Reminder (remove once resolved)
 
-## Backend Structure
+The user's laptop (ASUS GL553VD) shuts down randomly. See **`vault/memory/Context/Laptop random shutdown diagnosis.md`** — on the next session, act on it (run the thermal logger under load before the next shutdown).
 
-```
-backend/
-  app/
-    models/        # SQLAlchemy ORM models
-    plugins/       # Plugin system
-    routers/       # FastAPI route handlers
-    services/      # Business logic (voice, browser, MQTT, etc.)
-  requirements.txt
-```
+## Backend Runtime
 
-## Key Files
-
-- `backend/app/services/voice_service.py` — TTS/STT (edge-tts, Whisper)
-- `backend/app/services/hermes_browser.py` — Playwright browser automation
-- `backend/app/services/mqtt_service.py` — Smart home MQTT
-
-## Code Conventions
-
-- Python: type hints, async/await, Pydantic models
-- No comments unless requested
-- Follow existing patterns in each file
-- Use `httpx` for HTTP clients, `asyncio` for concurrency
-- Security: never log secrets, never commit API keys
-
-## Local Models
-
-- `qwen2.5-coder:7b` — coding tasks (Ollama)
-- `llama3.2:latest` — general conversation (Ollama)
-- `whisper` — speech-to-text (local, CPU)
+- ALWAYS run the backend externally — launch `run-backend.ps1` in its own detached PowerShell window via `Start-Process`, never in the opencode shell session.
 
 ## gstack Workflow
 
@@ -74,9 +42,28 @@ Available skills (use `/skill-name` to activate):
 - `/execution/execute-ticket` — execute a ticket
 - `/retrospectives/complete-sprint` — sprint retro
 
+## Vault Graph
+
+The vault uses Obsidian wikilinks (`[[Note Name]]`) to connect related notes. When reading a vault file:
+1. Note its title and section headings
+2. Follow any `[[wikilinks]]` you encounter — they connect to related context
+3. Traverse 2-3 hops deep when investigating a topic (e.g., `[[Voice Pipeline]]` → links to `[[Wake Word Service]]` → links to `[[openWakeWord over Whisper for wake word]]`)
+4. Use `vault/memory/Memory Map.md` as the entry point — it links to every memory note
+5. This works alongside Obsidian — no vault files are modified
+
+## Ponytail — Minimalism Decision Ladder
+
+Before writing any code, descend this ladder (stop at first satisfied rung):
+1. **YAGNI** — Skip it entirely. Don't build something you don't need right now.
+2. **Use stdlib** — Can Python/Dart built-ins do this? No new dependency.
+3. **Use native platform feature** — OS API, shell command, platform channel.
+4. **Use existing dependency** — Already in `requirements.txt` or `pubspec.yaml`.
+5. **Write one line** — Literally one expression. If it needs more, reconsider.
+6. **Write the minimum that works** — No abstraction, no over-engineering, no comments.
+
 ## Model Rules
 
 - Use `ollama/qwen2.5-coder:7b` for code generation and review
 - Use `ollama/llama3.2:latest` for conversation and planning
 - Always verify local model availability before assuming GPU access
-- RX 6600 = RDNA 2, no CUDA, limited ROCm on Windows
+- GPU is detected at startup by `backend/app/services/hardware_detector.py` (nvidia-smi + torch). Since Ollama v0.12.0 the GTX 1050 (Pascal, CC 6.1) runs the LLM on GPU; the CPU runner is only forced when the installed Ollama predates v0.12.0 or the compute capability is below 6.0. Never hardcode GPU assumptions.

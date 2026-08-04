@@ -3,24 +3,7 @@ import 'dart:math';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import '../services/system_service.dart';
-import 'home_screen.dart';
-import 'devices_screen.dart';
-import 'screen_share_screen.dart';
-import 'camera_screen.dart';
-import 'wearable_screen.dart';
-import 'smart_home_screen.dart';
-import 'personality_screen.dart';
-import 'browser_screen.dart';
-import 'monitoring_screen.dart';
-import 'settings_screen.dart';
-import '../services/websocket_service.dart';
-import '../services/device_service.dart';
-import '../services/screen_share_service.dart';
-import '../services/camera_service.dart';
-import '../services/wearable_service.dart';
-import '../services/smart_home_service.dart';
-import '../services/vision_service.dart';
-import '../services/browser_service.dart';
+import 'main_screen.dart';
 
 const Color _void = Color(0xFF06080d);
 const Color _hud = Color(0xFF00e5ff);
@@ -137,7 +120,7 @@ class _SpecsCheckScreenState extends State<SpecsCheckScreen>
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => JarvisMainScreen(initialTier: _selectedTier),
+          builder: (context) => const MainScreen(),
         ),
       );
     }
@@ -753,100 +736,4 @@ class _GridPainter extends CustomPainter {
 }
 
 
-class JarvisMainScreen extends StatefulWidget {
-  final String initialTier;
-  const JarvisMainScreen({required this.initialTier});
 
-  @override
-  State<JarvisMainScreen> createState() => JarvisMainScreenState();
-}
-
-class JarvisMainScreenState extends State<JarvisMainScreen> {
-  int _currentIndex = 0;
-  final WebSocketService _webSocketService = WebSocketService();
-  late final DeviceService _deviceService;
-  late final ScreenShareService _screenShareService;
-  late final CameraService _cameraService;
-  late final WearableService _wearableService;
-  late final SmartHomeService _smartHomeService;
-  late final VisionService _visionService;
-  late final BrowserService _browserService;
-  late final List<Widget> _screens;
-
-  @override
-  void initState() {
-    super.initState();
-    _deviceService = DeviceService(_webSocketService, baseUrl: 'http://localhost:8000');
-    _screenShareService = ScreenShareService(_webSocketService);
-    _cameraService = CameraService(_webSocketService);
-    _wearableService = WearableService(_webSocketService);
-    _smartHomeService = SmartHomeService(_webSocketService);
-    _visionService = VisionService(_webSocketService);
-    _browserService = BrowserService(_webSocketService);
-
-    _screens = [
-      HomeScreen(webSocketService: _webSocketService),
-      DevicesScreen(deviceService: _deviceService),
-      ScreenShareScreen(screenShareService: _screenShareService),
-      CameraScreen(cameraService: _cameraService, visionService: _visionService),
-      WearableScreen(wearableService: _wearableService),
-      SmartHomeScreen(smartHomeService: _smartHomeService),
-      PersonalityScreen(),
-      BrowserScreen(browserService: _browserService),
-      MonitoringScreen(webSocketService: _webSocketService),
-      SettingsScreen(),
-    ];
-
-    _webSocketService.connect('ws://localhost:8000/ws');
-    _deviceService.fetchDevices();
-    _cameraService.fetchCameras();
-    _wearableService.fetchDevices();
-    _smartHomeService.fetchDevices();
-  }
-
-  @override
-  void dispose() {
-    _webSocketService.send({'type': 'farewell'});
-    Future.delayed(Duration(seconds: 2), () {
-      _webSocketService.dispose();
-      exit(0);
-    });
-    _deviceService.dispose();
-    _screenShareService.dispose();
-    _cameraService.dispose();
-    _wearableService.dispose();
-    _smartHomeService.dispose();
-    _visionService.dispose();
-    _browserService.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        backgroundColor: _panel,
-        selectedItemColor: _hud,
-        unselectedItemColor: _textDim,
-        type: BottomNavigationBarType.fixed,
-        selectedFontSize: 10,
-        unselectedFontSize: 10,
-        items: [
-          BottomNavigationBarItem(icon: Icon(Icons.home, size: 20), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.devices, size: 20), label: 'Devices'),
-          BottomNavigationBarItem(icon: Icon(Icons.screen_share, size: 20), label: 'Screen'),
-          BottomNavigationBarItem(icon: Icon(Icons.visibility, size: 20), label: 'Vision'),
-          BottomNavigationBarItem(icon: Icon(Icons.watch, size: 20), label: 'Health'),
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined, size: 20), label: 'Smart'),
-          BottomNavigationBarItem(icon: Icon(Icons.psychology, size: 20), label: 'Mind'),
-          BottomNavigationBarItem(icon: Icon(Icons.language, size: 20), label: 'Browser'),
-          BottomNavigationBarItem(icon: Icon(Icons.monitor_heart, size: 20), label: 'Monitor'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings, size: 20), label: 'Settings'),
-        ],
-      ),
-    );
-  }
-}

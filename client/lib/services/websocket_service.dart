@@ -8,6 +8,7 @@ class WebSocketService {
   final _exitController = StreamController<void>.broadcast();
   bool _isConnected = false;
   String? _url;
+  String? _token;
   Timer? _reconnectTimer;
   Timer? _pingTimer;
 
@@ -15,18 +16,22 @@ class WebSocketService {
   Stream<void> get exitApp => _exitController.stream;
   bool get isConnected => _isConnected;
 
-  void connect(String url) {
+  void connect(String url, {String? token}) {
     _url = url;
+    _token = token;
     _reconnectTimer?.cancel();
     _pingTimer?.cancel();
-    
-    // Close old channel before reconnecting
+
     try {
       _channel?.sink.close();
     } catch (e) {}
 
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(url));
+      var uri = Uri.parse(url);
+      if (token != null) {
+        uri = uri.replace(queryParameters: {'token': token});
+      }
+      _channel = WebSocketChannel.connect(uri);
 
       _channel!.stream.listen(
         (data) {
@@ -71,7 +76,7 @@ class WebSocketService {
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(Duration(seconds: 3), () {
       if (!_isConnected && !_messageController.isClosed && _url != null) {
-        connect(_url!);
+        connect(_url!, token: _token);
       }
     });
   }
@@ -82,32 +87,18 @@ class WebSocketService {
         _channel!.sink.add(json.encode(message));
       } catch (e) {
         _isConnected = false;
+        _scheduleReconnect();
       }
     }
   }
 
-  void reconnect() {
-    if (_url != null) {
-      connect(_url!);
-    }
-  }
-
-  void disconnect() {
+  void dispose() {
     _reconnectTimer?.cancel();
     _pingTimer?.cancel();
+    _messageController.close();
+    _exitController.close();
     try {
       _channel?.sink.close();
     } catch (e) {}
-    _isConnected = false;
-  }
-
-  void dispose() {
-    disconnect();
-    if (!_messageController.isClosed) {
-      _messageController.close();
-    }
-    if (!_exitController.isClosed) {
-      _exitController.close();
-    }
   }
 }

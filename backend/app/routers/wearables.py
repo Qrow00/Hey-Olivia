@@ -22,24 +22,17 @@ class HealthUpdate(BaseModel):
 
 @router.get("/")
 async def get_wearables():
-    return wearable_service.get_all_devices()
+    return await wearable_service.get_all_devices()
 
 
 @router.get("/{device_id}")
 async def get_wearable(device_id: str):
-    device = wearable_service.get_device(device_id)
+    device = await wearable_service.get_device(device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Wearable not found")
     return {
-        "id": device.id,
-        "name": device.name,
-        "type": device.type,
-        "platform": device.platform,
-        "is_online": device.is_online,
-        "battery": device.battery,
-        "firmware_version": device.firmware_version,
-        "last_sync": device.last_sync,
-        "health_summary": wearable_service.get_health_summary(device.id),
+        **device,
+        "health_summary": wearable_service.get_health_summary(device["id"]),
     }
 
 
@@ -65,11 +58,11 @@ async def unregister_wearable(device_id: str):
 
 @router.post("/{device_id}/health")
 async def update_health(device_id: str, update: HealthUpdate):
-    device = wearable_service.get_device(device_id)
+    device = await wearable_service.get_device(device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Wearable not found")
 
-    wearable_service.record_metric(device_id, update.metric, update.value, update.unit)
+    await wearable_service.record_metric(device_id, update.metric, update.value, update.unit)
 
     alerts = wearable_service.check_alerts(device_id)
 
@@ -92,7 +85,7 @@ async def get_health_summary(device_id: str):
 
 @router.get("/{device_id}/health/history")
 async def get_health_history(device_id: str, metric: Optional[str] = None, limit: int = 50):
-    history = wearable_service.get_health_history(device_id, metric, limit)
+    history = await wearable_service.get_health_history(device_id, metric, limit)
     return {"device_id": device_id, "history": history}
 
 

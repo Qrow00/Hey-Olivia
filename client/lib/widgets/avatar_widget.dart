@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'package:flutter/material.dart';
 
 class AvatarWidget extends StatefulWidget {
   final String currentState;
@@ -14,28 +14,14 @@ class AvatarWidget extends StatefulWidget {
 class _AvatarWidgetState extends State<AvatarWidget>
     with TickerProviderStateMixin {
   late AnimationController _controller;
-  late AnimationController _popController;
-  late Animation<double> _popAnimation;
-  double _pulseIntensity = 0.0;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: Duration(seconds: 6),
+      duration: Duration(seconds: 8),
       vsync: this,
     )..repeat();
-
-    _popController = AnimationController(
-      duration: Duration(milliseconds: 300),
-      vsync: this,
-    );
-    _popAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.25), weight: 30),
-      TweenSequenceItem(tween: Tween(begin: 1.25, end: 0.92), weight: 30),
-      TweenSequenceItem(tween: Tween(begin: 0.92, end: 1.05), weight: 20),
-      TweenSequenceItem(tween: Tween(begin: 1.05, end: 1.0), weight: 20),
-    ]).animate(CurvedAnimation(parent: _popController, curve: Curves.easeOut));
   }
 
   @override
@@ -43,62 +29,42 @@ class _AvatarWidgetState extends State<AvatarWidget>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.currentState != widget.currentState) {
       _updateSpeed();
-      _popController.forward(from: 0.0);
     }
-    if (widget.wordPulse && !oldWidget.wordPulse) {
-      _triggerPulse();
-    }
-  }
-
-  void _triggerPulse() {
-    _pulseIntensity = 1.0;
-    Future.doWhile(() async {
-      await Future.delayed(Duration(milliseconds: 16));
-      _pulseIntensity *= 0.88;
-      if (_pulseIntensity < 0.01) {
-        _pulseIntensity = 0.0;
-        return false;
-      }
-      return true;
-    });
   }
 
   void _updateSpeed() {
     switch (widget.currentState) {
-      case 'idle':
-        _controller.duration = Duration(seconds: 6);
-      case 'listening':
-        _controller.duration = Duration(seconds: 2);
-      case 'thinking':
-        _controller.duration = Duration(milliseconds: 800);
-      case 'speaking':
-        _controller.duration = Duration(seconds: 3);
-      case 'error':
-        _controller.duration = Duration(milliseconds: 300);
+      case 'idle': _controller.duration = Duration(seconds: 8); break;
+      case 'listening': _controller.duration = Duration(seconds: 3); break;
+      case 'thinking': _controller.duration = Duration(milliseconds: 600); break;
+      case 'speaking': _controller.duration = Duration(seconds: 4); break;
+      case 'error': _controller.duration = Duration(milliseconds: 400); break;
     }
   }
 
   @override
   void dispose() {
     _controller.dispose();
-    _popController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([_controller, _popController]),
+      animation: _controller,
       builder: (context, _) {
-        final scale = _popAnimation.value;
-        return Transform.scale(
-          scale: scale,
-          child: CustomPaint(
-            size: Size(300, 300),
-            painter: JarvisAvatarPainter(
-              progress: _controller.value,
-              state: widget.currentState,
-              pulseIntensity: _pulseIntensity,
+        return FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: 300,
+            height: 300,
+            child: CustomPaint(
+              size: Size(300, 300),
+              painter: JarvisHudPainter(
+                progress: _controller.value,
+                state: widget.currentState,
+                wordPulse: widget.wordPulse,
+              ),
             ),
           ),
         );
@@ -107,325 +73,286 @@ class _AvatarWidgetState extends State<AvatarWidget>
   }
 }
 
-class JarvisAvatarPainter extends CustomPainter {
+class JarvisHudPainter extends CustomPainter {
   final double progress;
   final String state;
-  final double pulseIntensity;
+  final bool wordPulse;
 
-  JarvisAvatarPainter({
+  JarvisHudPainter({
     required this.progress,
     required this.state,
-    this.pulseIntensity = 0.0,
+    this.wordPulse = false,
   });
 
-  Color get _stateColor {
+  static const _primary = Color(0xFF40F9FF);
+  static const _secondary = Color(0xFF00B8FF);
+  static const _r = 150.0;
+  static const _cx = 150.0, _cy = 150.0;
+  static const _center = Offset(_cx, _cy);
+
+  Color get _tint {
     switch (state) {
-      case 'idle':
-        return Color(0xFF00D4FF);
-      case 'listening':
-        return Color(0xFF00FF88);
-      case 'thinking':
-        return Color(0xFFFFAA00);
-      case 'speaking':
-        return Color(0xFF00FFFF);
-      case 'error':
-        return Color(0xFFFF4444);
-      default:
-        return Color(0xFF00D4FF);
+      case 'listening': return const Color(0xFF00FF88);
+      case 'thinking': return const Color(0xFFFFAA00);
+      case 'speaking': return _primary;
+      case 'error': return const Color(0xFFFF4444);
+      default: return _primary;
     }
   }
 
-  double _speedMultiplier() {
+  double _speed() {
     switch (state) {
-      case 'idle':
-        return 1.0;
-      case 'listening':
-        return 2.5;
-      case 'thinking':
-        return 5.0;
-      case 'speaking':
-        return 1.5;
-      case 'error':
-        return 4.0;
-      default:
-        return 1.0;
+      case 'idle': return 0.4;
+      case 'listening': return 1.2;
+      case 'thinking': return 3.0;
+      case 'speaking': return 0.8;
+      case 'error': return 2.5;
+      default: return 0.6;
     }
-  }
-
-  double _breathe(double offset, double speed, double min, double max) {
-    final t = (progress * speed * _speedMultiplier() + offset) % 1.0;
-    return min + (max - min) * (0.5 + 0.5 * math.sin(t * 2 * math.pi));
   }
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final baseRadius = size.width / 2;
-    final pulseScale = 1.0 + pulseIntensity * 0.12;
-    final r = baseRadius * pulseScale;
+    final t = progress * _speed();
+    final breathe = 1.0 + 0.01 * math.sin(t * math.pi * 0.5);
+    final pulse = wordPulse ? 1.0 + 0.3 * (0.5 + 0.5 * math.sin(t * 6 * math.pi)) : 1.0;
 
-    final mainAngle = progress * 2 * math.pi * _speedMultiplier();
-    final reverseAngle = -mainAngle * 0.8;
-
-    _drawGlow(canvas, center, r);
-    _drawOuterRing(canvas, center, r, mainAngle);
-    _drawMiddleRing(canvas, center, r, reverseAngle);
-    _drawInnerRing(canvas, center, r);
-    _drawCoreBg(canvas, center, r);
-    _drawCoreReactor(canvas, center, r);
-    _drawCoreCenter(canvas, center, r);
-    _drawScanLine(canvas, center, r, mainAngle);
-    _drawDataPoints(canvas, center, r);
-    _drawStatusIndicators(canvas, center, r);
+    _drawBgFog(canvas, t);
+    _drawReticle(canvas, t, breathe, pulse);
+    _drawTickMarks(canvas, t, breathe, pulse);
+    _drawCrosshairs(canvas, t, breathe);
+    _drawBrackets(canvas, t, breathe);
+    _drawSweep(canvas, t, breathe);
+    _drawDataLabels(canvas, t);
+    _drawCore(canvas, t, pulse);
+    _drawLabel(canvas, t);
   }
 
-  void _drawGlow(Canvas canvas, Offset center, double radius) {
-    final baseOpacity = _breathe(0, 0.15, 0.1, 0.35);
-    final opacity = (baseOpacity + pulseIntensity * 0.4).clamp(0.0, 1.0);
-    final scale = _breathe(0, 0.15, 1.0, 1.1) + pulseIntensity * 0.08;
-    final paint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          _stateColor.withValues(alpha: opacity),
-          _stateColor.withValues(alpha: 0.0),
-        ],
-      ).createShader(
-        Rect.fromCircle(center: center, radius: radius * 1.1 * scale),
-      );
-    canvas.drawCircle(center, radius * 1.1 * scale, paint);
-  }
-
-  void _drawOuterRing(Canvas canvas, Offset center, double radius, double angle) {
-    final ringRadius = radius * 0.93;
-    final breatheScale = _breathe(0.1, 0.3, 0.97, 1.03) + pulseIntensity * 0.03;
-    final opacity = _breathe(0.1, 0.3, 0.5, 0.9);
-
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.scale(breatheScale);
-    canvas.rotate(angle);
-    canvas.translate(-center.dx, -center.dy);
-
-    final dashedPaint = Paint()
-      ..color = _stateColor.withValues(alpha: opacity)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-
-    _drawDashedCircle(canvas, center, ringRadius, dashedPaint, 40, 6);
-
-    canvas.restore();
-  }
-
-  void _drawMiddleRing(Canvas canvas, Offset center, double radius, double angle) {
-    final ringRadius = radius * 0.80;
-    final breatheScale = _breathe(0.2, 0.4, 0.97, 1.05) + pulseIntensity * 0.04;
-    final opacity = _breathe(0.2, 0.4, 0.6, 1.0);
-
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.scale(breatheScale);
-    canvas.rotate(angle);
-    canvas.translate(-center.dx, -center.dy);
-
-    final dashedPaint = Paint()
-      ..color = _stateColor.withValues(alpha: opacity * 0.8)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    _drawDashedCircle(canvas, center, ringRadius, dashedPaint, 30, 8);
-
-    canvas.restore();
-  }
-
-  void _drawInnerRing(Canvas canvas, Offset center, double radius) {
-    final ringRadius = radius * 0.67;
-    final breatheScale = _breathe(0.3, 0.5, 0.98, 1.06) + pulseIntensity * 0.04;
-    final opacity = _breathe(0.3, 0.5, 0.3, 0.6);
-
-    final paint = Paint()
-      ..color = _stateColor.withValues(alpha: opacity)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.scale(breatheScale);
-    canvas.translate(-center.dx, -center.dy);
-
-    canvas.drawCircle(center, ringRadius, paint);
-
-    canvas.restore();
-  }
-
-  void _drawCoreBg(Canvas canvas, Offset center, double radius) {
-    final coreRadius = radius * 0.53;
-    final breatheScale = _breathe(0, 0.3, 0.96, 1.08) + pulseIntensity * 0.05;
-    final opacity = _breathe(0, 0.3, 0.03, 0.1);
-
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.scale(breatheScale);
-    canvas.translate(-center.dx, -center.dy);
-
-    final bgPaint = Paint()
-      ..color = _stateColor.withValues(alpha: opacity + pulseIntensity * 0.08)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, coreRadius, bgPaint);
-
-    final borderPaint = Paint()
-      ..color = _stateColor.withValues(alpha: _breathe(0, 0.3, 0.6, 1.0))
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    canvas.drawCircle(center, coreRadius, borderPaint);
-
-    canvas.restore();
-  }
-
-  void _drawCoreReactor(Canvas canvas, Offset center, double radius) {
-    final reactorRadius = radius * 0.27;
-    final breatheScale = _breathe(0.15, 0.4, 0.97, 1.05) + pulseIntensity * 0.06;
-    final opacity = _breathe(0.15, 0.4, 0.1, 0.25);
-
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.scale(breatheScale);
-    canvas.translate(-center.dx, -center.dy);
-
-    final bgPaint = Paint()
-      ..color = _stateColor.withValues(alpha: opacity + pulseIntensity * 0.15)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, reactorRadius, bgPaint);
-
-    final borderPaint = Paint()
-      ..color = _stateColor.withValues(alpha: _breathe(0.15, 0.4, 0.7, 1.0))
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    canvas.drawCircle(center, reactorRadius, borderPaint);
-
-    canvas.restore();
-  }
-
-  void _drawCoreCenter(Canvas canvas, Offset center, double radius) {
-    final coreRadius = radius * 0.1;
-    final breatheScale = _breathe(0.4, 0.6, 0.95, 1.1) + pulseIntensity * 0.1;
-    final glowIntensity = _breathe(0.4, 0.6, 0.4, 1.0);
-
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.scale(breatheScale);
-    canvas.translate(-center.dx, -center.dy);
-
-    final glowPaint = Paint()
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 20 * glowIntensity + pulseIntensity * 15)
-      ..color = _stateColor.withValues(alpha: glowIntensity * 0.6 + pulseIntensity * 0.3);
-    canvas.drawCircle(center, coreRadius * 2 + pulseIntensity * 10, glowPaint);
-
-    final corePaint = Paint()
-      ..color = _stateColor
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, coreRadius * (1.0 + pulseIntensity * 0.3), corePaint);
-
-    final brightPaint = Paint()
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 8)
-      ..color = Colors.white.withValues(alpha: glowIntensity * 0.5 + pulseIntensity * 0.3);
-    canvas.drawCircle(center, coreRadius * 0.5, brightPaint);
-
-    canvas.restore();
-  }
-
-  void _drawScanLine(Canvas canvas, Offset center, double radius, double angle) {
-    if (state != 'listening') return;
-
-    final scanRadius = radius * 0.87;
-    final paint = Paint()
-      ..color = _stateColor.withValues(alpha: 0.8)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: scanRadius),
-      angle * 2,
-      math.pi * 0.15,
-      false,
-      paint,
-    );
-
-    final trailPaint = Paint()
-      ..color = _stateColor.withValues(alpha: 0.3)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: scanRadius),
-      angle * 2 + math.pi * 0.15,
-      math.pi * 0.3,
-      false,
-      trailPaint,
+  void _drawBgFog(Canvas canvas, double t) {
+    canvas.drawCircle(
+      _center, _r,
+      Paint()..shader = RadialGradient(
+        colors: [_tint.withValues(alpha: 0.025), _tint.withValues(alpha: 0)],
+      ).createShader(Rect.fromCircle(center: _center, radius: _r)),
     );
   }
 
-  void _drawDataPoints(Canvas canvas, Offset center, double radius) {
-    final dotRadius = 4.0;
-    final dist = radius * 0.87;
-    final baseOpacity = state == 'idle' ? 0.4 : 0.7;
-
-    for (int i = 0; i < 8; i++) {
-      final angle = i * math.pi / 4;
-      final pointOffset = Offset(
-        center.dx + math.cos(angle) * dist,
-        center.dy + math.sin(angle) * dist,
+  void _drawReticle(Canvas canvas, double t, double breathe, double pulse) {
+    for (int i = 0; i < 3; i++) {
+      final rr = _r * (0.36 + i * 0.17) * breathe;
+      final alpha = 0.08 + (i == 1 ? 0.10 : 0.0) + pulse * 0.04;
+      canvas.drawCircle(
+        _center, rr,
+        Paint()
+          ..color = _primary.withValues(alpha: alpha)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.5,
       );
-
-      final breathe = _breathe(i * 0.125, _speedMultiplier() * 0.5, 0.3, 1.0);
-      final dotScale = 1.0 + pulseIntensity * 0.5;
-      final paint = Paint()
-        ..color = _stateColor.withValues(alpha: baseOpacity * breathe + pulseIntensity * 0.3)
-        ..style = PaintingStyle.fill;
-
-      canvas.drawCircle(pointOffset, dotRadius * (0.5 + breathe * 0.5) * dotScale, paint);
     }
   }
 
-  void _drawStatusIndicators(Canvas canvas, Offset center, double radius) {
-    final dist = radius * 0.93;
-    final opacity = _breathe(0.5, 0.3, 0.5, 1.0);
-    final paint = Paint()
-      ..color = _stateColor.withValues(alpha: opacity)
-      ..style = PaintingStyle.fill;
+  void _drawTickMarks(Canvas canvas, double t, double breathe, double pulse) {
+    final count = 16;
+    final tickR = _r * 0.70 * breathe;
+    final activeOffset = (t * count).round();
+
+    for (int i = 0; i < count; i++) {
+      final a = i * 2 * math.pi / count;
+      final isActive = (i + activeOffset) % count < 4;
+      final innerR = tickR * (isActive ? 0.92 : 0.94);
+      final outerR = tickR * (isActive ? 1.0 : 0.98);
+      final alpha = (isActive ? 0.6 : 0.10) + pulse * 0.10;
+
+      canvas.drawLine(
+        Offset(_cx + math.cos(a) * innerR, _cy + math.sin(a) * innerR),
+        Offset(_cx + math.cos(a) * outerR, _cy + math.sin(a) * outerR),
+        Paint()
+          ..color = _primary.withValues(alpha: alpha)
+          ..strokeWidth = isActive ? 1.2 : 0.5,
+      );
+    }
+  }
+
+  void _drawCrosshairs(Canvas canvas, double t, double breathe) {
+    final cr = _r * 0.36 * breathe;
+    final len = _r * 0.08;
+
+    for (int i = 0; i < 4; i++) {
+      final a = i * math.pi / 2;
+      final dx = math.cos(a), dy = math.sin(a);
+      final blink = 0.7 + 0.3 * math.sin(t * 3 * math.pi + i * 1.5);
+
+      canvas.drawLine(
+        Offset(_cx + dx * (cr - len), _cy + dy * (cr - len)),
+        Offset(_cx + dx * cr, _cy + dy * cr),
+        Paint()
+          ..color = _primary.withValues(alpha: 0.5 * blink)
+          ..strokeWidth = 1.5
+          ..strokeCap = StrokeCap.round,
+      );
+
+      canvas.drawLine(
+        Offset(_cx + dx * (_r * breathe * 0.70), _cy + dy * (_r * breathe * 0.70)),
+        Offset(_cx + dx * (_r * breathe * 0.70 + len), _cy + dy * (_r * breathe * 0.70 + len)),
+        Paint()
+          ..color = _primary.withValues(alpha: 0.3 * blink)
+          ..strokeWidth = 1.0
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  void _drawBrackets(Canvas canvas, double t, double breathe) {
+    final br = _r * 0.78 * breathe;
+    final size = _r * 0.06;
+    final gap = _r * 0.02;
+    final blink = 0.6 + 0.4 * math.sin(t * 2 * math.pi);
 
     final positions = [
-      Offset(center.dx, center.dy - dist),
-      Offset(center.dx + dist, center.dy),
-      Offset(center.dx, center.dy + dist),
-      Offset(center.dx - dist, center.dy),
+      [-1, -1, 0, 0],
+      [1, -1, math.pi / 2, 0],
+      [1, 1, math.pi, 0],
+      [-1, 1, -math.pi / 2, 0],
     ];
 
-    for (final pos in positions) {
-      canvas.drawCircle(pos, 5 + pulseIntensity * 3, paint);
+    for (final p in positions) {
+      canvas.save();
+      canvas.translate(_cx + p[0] * br, _cy + p[1] * br);
+      canvas.rotate(p[2] as double);
+
+      final bracketPaint = Paint()
+        ..color = _primary.withValues(alpha: 0.3 * blink)
+        ..strokeWidth = 1.0;
+
+      canvas.drawLine(Offset(-size - gap, -gap), Offset(-gap, -gap), bracketPaint);
+      canvas.drawLine(Offset(-gap, -gap), Offset(-gap, -size - gap), bracketPaint);
+
+      canvas.restore();
     }
   }
 
-  void _drawDashedCircle(Canvas canvas, Offset center, double radius, Paint paint, int dashCount, double dashLength) {
-    final circumference = 2 * math.pi * radius;
-    final dashAngle = (dashLength / radius);
-    final gapAngle = (circumference / dashCount / radius) - dashAngle;
+  void _drawSweep(Canvas canvas, double t, double breathe) {
+    final sr = _r * 0.53 * breathe;
+    final angle = t * 2 * math.pi;
 
-    for (int i = 0; i < dashCount; i++) {
-      final startAngle = (i * (dashAngle + gapAngle));
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        startAngle,
-        dashAngle,
-        false,
-        paint,
-      );
-    }
+    final sweepPaint = Paint()
+      ..shader = SweepGradient(
+        startAngle: angle - 0.08,
+        endAngle: angle + 0.08,
+        colors: [
+          _primary.withValues(alpha: 0),
+          _primary.withValues(alpha: 0.10),
+          _primary.withValues(alpha: 0),
+        ],
+      ).createShader(Rect.fromCircle(center: _center, radius: sr))
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    canvas.drawArc(Rect.fromCircle(center: _center, radius: sr), angle - 0.5, 1.0, false, sweepPaint);
+
+    final sweepLine = Paint()
+      ..color = _primary.withValues(alpha: 0.2)
+      ..strokeWidth = 0.5;
+    canvas.drawLine(
+      _center,
+      Offset(_cx + math.cos(angle) * sr, _cy + math.sin(angle) * sr),
+      sweepLine,
+    );
+  }
+
+  void _drawDataLabels(Canvas canvas, double t) {
+    final alpha = 0.2 + 0.1 * (0.5 + 0.5 * math.sin(t * math.pi * 1.3));
+    final style = TextStyle(
+      color: _primary.withValues(alpha: alpha),
+      fontSize: 8,
+      letterSpacing: 2,
+      fontWeight: FontWeight.w300,
+    );
+
+    _drawLabelText(canvas, 'SYS ONLINE', _cx, _cy - _r * 0.48, style);
+    _drawLabelText(canvas, 'TARGET ACQ', _cx, _cy + _r * 0.48, style);
+    _drawLabelText(canvas, '01', _cx - _r * 0.45, _cy, style);
+    _drawLabelText(canvas, '02', _cx + _r * 0.45, _cy, style);
+  }
+
+  void _drawLabelText(Canvas canvas, String text, double x, double y, TextStyle style) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+    );
+    tp.layout();
+    tp.paint(canvas, Offset(x - tp.width / 2, y - tp.height / 2));
+  }
+
+  void _drawCore(Canvas canvas, double t, double pulse) {
+    final coreR = _r * 0.08;
+    final p = 0.5 + 0.5 * math.sin(t * 2 * math.pi);
+
+    canvas.save();
+    final s = 1.0 + p * 0.02 * pulse;
+    canvas.translate(_cx, _cy);
+    canvas.scale(s);
+    canvas.translate(-_cx, -_cy);
+
+    final glow = Paint()
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 20 + p * 10)
+      ..shader = RadialGradient(
+        colors: [
+          _tint.withValues(alpha: 0.3 + p * 0.2),
+          _secondary.withValues(alpha: 0.08),
+          _tint.withValues(alpha: 0),
+        ],
+      ).createShader(Rect.fromCircle(center: _center, radius: coreR * 3));
+    canvas.drawCircle(_center, coreR * 3, glow);
+
+    final core = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.white.withValues(alpha: 1.0),
+          Colors.white.withValues(alpha: 0.95),
+          _primary.withValues(alpha: 0.8),
+          _secondary.withValues(alpha: 0.2),
+        ],
+      ).createShader(Rect.fromCircle(center: _center, radius: coreR));
+    canvas.drawCircle(_center, coreR, core);
+
+    final hl = Paint()
+      ..color = Colors.white.withValues(alpha: 0.8 + p * 0.2);
+    canvas.drawCircle(Offset(_cx - coreR * 0.2, _cy - coreR * 0.2), coreR * 0.2, hl);
+
+    canvas.restore();
+  }
+
+  void _drawLabel(Canvas canvas, double t) {
+    final opacity = 0.20 + 0.10 * (0.5 + 0.5 * math.sin(t * math.pi));
+
+    final tp = TextPainter(
+      text: TextSpan(
+        text: 'J.A.R.V.I.S.',
+        style: TextStyle(
+          color: _primary.withValues(alpha: opacity),
+          fontSize: 11,
+          letterSpacing: 5,
+          fontWeight: FontWeight.w200,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    tp.layout();
+    tp.paint(canvas, Offset(_cx - tp.width / 2, _cy + _r * 0.58));
+
+    final lineY = _cy + _r * 0.58 + tp.height + 4;
+    final lineW = _r * 0.16;
+    canvas.drawLine(
+      Offset(_cx - lineW, lineY),
+      Offset(_cx + lineW, lineY),
+      Paint()
+        ..color = _primary.withValues(alpha: opacity * 0.4)
+        ..strokeWidth = 0.5,
+    );
   }
 
   @override
-  bool shouldRepaint(covariant JarvisAvatarPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.state != state ||
-        oldDelegate.pulseIntensity != pulseIntensity;
-  }
+  bool shouldRepaint(covariant JarvisHudPainter old) =>
+      old.progress != progress || old.state != state || old.wordPulse != wordPulse;
 }

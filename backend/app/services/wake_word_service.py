@@ -84,12 +84,29 @@ class WakeWordService:
             self._model = None
             return False
 
+    def _decode_audio(self, audio_bytes: bytes):
+        if not audio_bytes:
+            return None
+        if len(audio_bytes) >= 44 and audio_bytes[:4] == b"RIFF":
+            try:
+                data_size = struct.unpack("<I", audio_bytes[40:44])[0]
+                pcm = audio_bytes[44:44 + data_size]
+            except Exception:
+                pcm = audio_bytes
+        else:
+            pcm = audio_bytes
+        if not pcm:
+            return None
+        return np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+
     def process_bytes(self, audio_bytes: bytes) -> bool:
         if not self._ensure_model():
             return False
 
         try:
-            audio_np = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+            audio_np = self._decode_audio(audio_bytes)
+            if audio_np is None or len(audio_np) < FRAME_LENGTH:
+                return False
             prediction = self._model.predict(audio_np)
 
             for model_name in self._model_names:

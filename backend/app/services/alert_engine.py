@@ -67,6 +67,16 @@ class AlertEngine:
                 "cooldown": 600,
                 "enabled": True,
             },
+            {
+                "id": "vram_high",
+                "metric": "gpu_memory_used",
+                "condition": ">=",
+                "threshold": 3072,
+                "severity": "warning",
+                "message": "VRAM usage at {value} MB — over the 3 GB budget",
+                "cooldown": 300,
+                "enabled": True,
+            },
         ]
 
     def set_notification_callback(self, callback):

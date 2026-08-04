@@ -1,16 +1,20 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import (
     devices, conversations, settings, commands, websocket, voice,
     screen_share, cameras, wearables, smart_home, vision, plugins,
-    personality, voice_profiles, browser, system,
+    personality, voice_profiles, browser, system, auth,
 )
 from app.models.database import engine, Base
-from app.plugins.manager import plugin_manager
-from app.plugins.motion_detector import MotionDetectorPlugin
-from app.services.hermes_browser import hermes_browser
 
 app = FastAPI(title="J.A.R.V.I.S. API", version="2.0.0")
+
+JARVIS_SERVICES = os.getenv("JARVIS_SERVICES", "all").lower()
+_services = JARVIS_SERVICES.split(",")
+
+def service_enabled(name: str) -> bool:
+    return "all" in _services or name in _services
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,41 +40,66 @@ app.include_router(personality.router, prefix="/api/v1/personality", tags=["pers
 app.include_router(voice_profiles.router, prefix="/api/v1/voice-profiles", tags=["voice-profiles"])
 app.include_router(browser.router, prefix="/api/v1/browser", tags=["browser"])
 app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 
 
 @app.on_event("startup")
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        from sqlalchemy import text
+        try:
+            await conn.execute(text("ALTER TABLE wearable_devices ADD COLUMN user_id VARCHAR DEFAULT 'default'"))
+        except:
+            pass
 
-    await plugin_manager.register_plugin(MotionDetectorPlugin())
-    
-    try:
-        await hermes_browser.initialize()
-    except Exception as e:
-        print(f"[HERMES BROWSER] Init deferred: {e}")
+    if service_enabled("plugins"):
+        from app.plugins.manager import plugin_manager
+        from app.plugins.motion_detector import MotionDetectorPlugin
+        await plugin_manager.register_plugin(MotionDetectorPlugin())
 
-    from app.services.monitoring_service import monitoring_service
-    from app.services.activity_logger import activity_logger
-    await monitoring_service.start_polling()
-    await activity_logger.start_polling()
+    if service_enabled("browser"):
+        from app.services.hermes_browser import hermes_browser
+        try:
+            await hermes_browser.initialize()
+        except Exception as e:
+            print(f"[HERMES BROWSER] Init deferred: {e}")
 
-    from app.routers.websocket import _setup_monitoring_broadcast
-    _setup_monitoring_broadcast()
+    if service_enabled("monitoring"):
+        from app.services.monitoring_service import monitoring_service
+        from app.services.activity_logger import activity_logger
+        await monitoring_service.start_polling()
+        await activity_logger.start_polling()
 
-    print("J.A.R.V.I.S. v2.0.0 initialized")
+        from app.routers.websocket import _setup_monitoring_broadcast
+        _setup_monitoring_broadcast()
+
+    from app.services.wearable_service import wearable_service
+    await wearable_service.load_from_db()
+
+    from app.services.system_config import system_config_service
+    system_config_service.auto_adapt()
+
+    from app.services.voice_service import voice_service
+    await voice_service.initialize()
+
+    print(f"J.A.R.V.I.S. v2.0.0 initialized — services=[{JARVIS_SERVICES}]")
 
 
 @app.on_event("shutdown")
 async def shutdown():
     from app.services.conversation_memory import conversation_memory
     conversation_memory.save_on_exit()
-    await hermes_browser.shutdown()
 
-    from app.services.monitoring_service import monitoring_service
-    from app.services.activity_logger import activity_logger
-    await monitoring_service.stop_polling()
-    await activity_logger.stop_polling()
+    if service_enabled("browser"):
+        from app.services.hermes_browser import hermes_browser
+        await hermes_browser.shutdown()
+
+    if service_enabled("monitoring"):
+        from app.services.monitoring_service import monitoring_service
+        from app.services.activity_logger import activity_logger
+        await monitoring_service.stop_polling()
+        await activity_logger.stop_polling()
 
     print("J.A.R.V.I.S. shutdown — memory saved")
 

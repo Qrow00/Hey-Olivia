@@ -111,6 +111,43 @@ class SystemConfigService:
         self._active_config: dict = {}
         self._detected_specs: dict = {}
 
+    def _detect_gpu(self) -> dict:
+        gpu_info = {"name": None, "vram_gb": 0, "has_gpu": False}
+        if _HAS_GPUTIL:
+            try:
+                gpus = GPUtil.getGPUs()
+                if gpus:
+                    g = gpus[0]
+                    return {
+                        "name": g.name,
+                        "vram_gb": round(g.memoryTotal / 1024, 1),
+                        "has_gpu": True,
+                    }
+            except Exception:
+                pass
+        if platform.system() == "Windows":
+            try:
+                import json
+                import subprocess
+                out = subprocess.run(
+                    ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                     "Get-CimInstance Win32_VideoController | "
+                     "Select-Object Name, AdapterRAM | ConvertTo-Json -Compress"],
+                    capture_output=True, text=True, timeout=10,
+                ).stdout.strip()
+                if out:
+                    data = json.loads(out)
+                    entries = data if isinstance(data, list) else [data]
+                    if entries:
+                        e = entries[0]
+                        name = e.get("Name") or "Unknown GPU"
+                        ram_bytes = e.get("AdapterRAM") or 0
+                        vram_gb = round(ram_bytes / (1024**3), 1) if ram_bytes else 0
+                        gpu_info = {"name": name, "vram_gb": vram_gb, "has_gpu": bool(vram_gb)}
+            except Exception:
+                pass
+        return gpu_info
+
     def detect_specs(self) -> dict:
         ram = psutil.virtual_memory()
         ram_gb = round(ram.total / (1024**3), 1)
@@ -118,19 +155,7 @@ class SystemConfigService:
         cpu_freq = psutil.cpu_freq()
         cpu_freq_ghz = round(cpu_freq.current / 1000, 2) if cpu_freq else 0
 
-        gpu_info = {"name": None, "vram_gb": 0, "has_gpu": False}
-        if _HAS_GPUTIL:
-            try:
-                gpus = GPUtil.getGPUs()
-                if gpus:
-                    g = gpus[0]
-                    gpu_info = {
-                        "name": g.name,
-                        "vram_gb": round(g.memoryTotal / 1024, 1),
-                        "has_gpu": True,
-                    }
-            except Exception:
-                pass
+        gpu_info = self._detect_gpu()
 
         specs = {
             "os": platform.system(),
@@ -152,24 +177,28 @@ class SystemConfigService:
             specs = self._detected_specs or self.detect_specs()
 
         ram_gb = specs.get("ram_gb", 0)
-        ram_avail = specs.get("ram_available_gb", 0)
-        has_gpu = specs.get("gpu", {}).get("has_gpu", False)
-        vram_gb = specs.get("gpu", {}).get("vram_gb", 0)
+        gpu = specs.get("gpu", {})
+        has_gpu = gpu.get("has_gpu", False)
+        vram_gb = gpu.get("vram_gb", 0)
 
-        # Use the tighter of total and available (available reflects current pressure)
-        effective_ram = min(ram_gb, ram_avail + 2)  # +2GB for baseline OS headroom
-
-        # Low: < 8GB total, or < 6GB available with no/small GPU
-        if ram_gb < 8 or (effective_ram < 6 and (not has_gpu or vram_gb < 4)):
-            return "low"
-
-        # Medium: 8-16GB, GPU exists but VRAM too small for big models,
-        # or tight available RAM even with decent GPU
-        if ram_gb < 16 or vram_gb < 6 or effective_ram < 8:
+        if has_gpu and vram_gb >= 3:
+            if ram_gb >= 16 and vram_gb >= 6:
+                return "high"
             return "medium"
+        if ram_gb >= 12:
+            return "medium"
+        return "low"
 
-        # High: 16GB+ RAM, dedicated GPU with 6GB+ VRAM
-        return "high"
+    def _pick_installed_llm(self, candidates: list) -> str:
+        try:
+            import ollama
+            installed = [m.model.split(":")[0] for m in ollama.list().models]
+            for c in candidates:
+                if c and c.split(":")[0] in installed:
+                    return c
+        except Exception:
+            pass
+        return candidates[0] if candidates else None
 
     def get_preset(self, tier: str) -> dict:
         return TIER_PRESETS.get(tier, TIER_PRESETS["medium"])
@@ -180,14 +209,31 @@ class SystemConfigService:
             "tier": tier,
             **preset,
         }
-        try:
-            from app.services.voice_service import voice_service
-            llm_model = preset.get("models", {}).get("llm")
-            if llm_model:
+        llm_model = preset.get("models", {}).get("llm")
+        if llm_model:
+            llm_model = self._pick_installed_llm([llm_model, "llama3.2", "phi4-mini"])
+            try:
+                from app.services.settings_service import settings_service
+                settings_service.update("default", {"voice": {"llm_model": llm_model}})
+            except Exception:
+                pass
+            try:
+                from app.services.voice_service import voice_service
                 voice_service.llm_model = llm_model
-                print(f"[SystemConfig] Set voice_service.llm_model = {llm_model}")
-        except Exception:
-            pass
+            except Exception:
+                pass
+            print(f"[SystemConfig] Applied tier '{tier}' -> LLM model: {llm_model}")
+        return self._active_config
+
+    def auto_adapt(self) -> dict:
+        specs = self.detect_specs()
+        tier = self.recommend_tier(specs)
+        self.apply_tier(tier)
+        print(
+            f"[SystemConfig] Detected {specs['ram_gb']}GB RAM, "
+            f"{specs['cpu_count']} cores, GPU={specs['gpu'].get('name')} "
+            f"({specs['gpu'].get('vram_gb', 0)}GB) -> tier '{tier}'"
+        )
         return self._active_config
 
     def get_active_config(self) -> dict:

@@ -7,20 +7,28 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 
-    private val CHANNEL = "screen_capture"
+    private val SCREEN_CAPTURE_CHANNEL = "screen_capture"
+    private val HEALTH_BRIDGE_CHANNEL = "health_bridge"
+    private val TTS_CHANNEL = "tts_plugin"
+    private val MIC_RECORDER_CHANNEL = "mic_recorder"
+    private val MIC_RECORDER_EVENTS = "mic_recorder_events"
     private val SCREEN_CAPTURE_REQUEST = 1001
     private var resultCallback: MethodChannel.Result? = null
+    private var healthBridge: HealthBridgePlugin? = null
+    private var ttsPlugin: TTSPlugin? = null
+    private var micRecorderPlugin: MicRecorderPlugin? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            CHANNEL
+            SCREEN_CAPTURE_CHANNEL
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "captureFrame" -> {
@@ -57,6 +65,43 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+
+        healthBridge = HealthBridgePlugin(this)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            HEALTH_BRIDGE_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            healthBridge?.onMethodCall(call, result)
+        }
+
+        ttsPlugin = TTSPlugin(this)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            TTS_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            ttsPlugin?.onMethodCall(call, result)
+        }
+
+        micRecorderPlugin = MicRecorderPlugin(this, java.lang.ref.WeakReference(this))
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            MIC_RECORDER_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            micRecorderPlugin?.onMethodCall(call, result)
+        }
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            MIC_RECORDER_EVENTS
+        ).setStreamHandler(micRecorderPlugin)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        micRecorderPlugin?.onRequestPermissionsResult(requestCode, grantResults)
     }
 
     private fun startScreenCapture(width: Int, height: Int, fps: Int, result: MethodChannel.Result) {

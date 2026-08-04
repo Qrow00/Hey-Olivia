@@ -5,6 +5,7 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'mic_recorder.dart';
 import 'websocket_service.dart';
 
 enum VadState { idle, listening, speaking, processing }
@@ -39,6 +40,8 @@ class VoiceService {
   bool _wakeWordMode = false;
   bool _wakeWordCooldown = false;
   Process? _currentPlayer;
+  MicRecorder? _micRecorder;
+  StreamSubscription<List<int>>? _audioStreamSub;
 
   static const int _sampleRate = 16000;
   static const int _bytesPerSample = 2;
@@ -173,7 +176,12 @@ class VoiceService {
       } catch (_) {}
       _currentPlayer = null;
     }
+    if (Platform.isAndroid) {
+      try { _ttsChannel.invokeMethod('stopAudio'); } catch (_) {}
+    }
   }
+
+  static const _ttsChannel = MethodChannel('tts_plugin');
 
   Future<void> _playAudio(String? audioBase64) async {
     if (audioBase64 == null || audioBase64.isEmpty || _isDisposed) return;
@@ -187,40 +195,52 @@ class VoiceService {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.mp3');
       await file.writeAsBytes(audioBytes);
-      final safePath = file.path.replaceAll("'", "''");
 
-      print('[Voice] Playing TTS via .NET MediaPlayer...');
       if (isListening && !_isDisposed) {
         await stopListening();
         print('[Voice] Paused mic during TTS playback');
       }
-      final process = await Process.start('powershell', [
-        '-NoProfile', '-NonInteractive', '-Command',
-        "Add-Type -AssemblyName PresentationCore; "
-        "\$p = New-Object System.Windows.Media.MediaPlayer; "
-        "\$p.Open([uri]::new('file:///$safePath')); "
-        "\$p.Play(); "
-        "Start-Sleep -Milliseconds 800; "
-        "\$maxWait = 30; "
-        "\$elapsed = 0; "
-        "while (\$elapsed -lt \$maxWait) { "
-        "  try { "
-        "    if (\$p.NaturalDuration.HasTimeSpan -and \$p.Position -ge \$p.NaturalDuration.TimeSpan) { break } "
-        "  } catch { break } "
-        "  Start-Sleep -Milliseconds 200; "
-        "  \$elapsed += 0.2; "
-        "} "
-        "\$p.Stop(); \$p.Close();",
-      ]);
-      _currentPlayer = process;
 
-      await process.exitCode;
+      if (Platform.isWindows) {
+        final safePath = file.path.replaceAll("'", "''");
+        final process = await Process.start('powershell', [
+          '-NoProfile', '-NonInteractive', '-Command',
+          "Add-Type -AssemblyName PresentationCore; "
+          "\$p = New-Object System.Windows.Media.MediaPlayer; "
+          "\$p.Open([uri]::new('file:///$safePath')); "
+          "\$p.Play(); "
+          "Start-Sleep -Milliseconds 800; "
+          "\$maxWait = 30; "
+          "\$elapsed = 0; "
+          "while (\$elapsed -lt \$maxWait) { "
+          "  try { "
+          "    if (\$p.NaturalDuration.HasTimeSpan -and \$p.Position -ge \$p.NaturalDuration.TimeSpan) { break } "
+          "  } catch { break } "
+          "  Start-Sleep -Milliseconds 200; "
+          "  \$elapsed += 0.2; "
+          "} "
+          "\$p.Stop(); \$p.Close();",
+        ]);
+        _currentPlayer = process;
+        await process.exitCode;
+        _currentPlayer = null;
+      } else if (Platform.isAndroid) {
+        try {
+          await _ttsChannel.invokeMethod('playAudio', {'path': file.path});
+        } catch (e) {
+          print('[Voice] Android playback error: $e');
+          try { await _ttsChannel.invokeMethod('stopAudio'); } catch (_) {}
+        }
+      } else {
+        print('[Voice] TTS playback skipped (platform: ${Platform.operatingSystem})');
+      }
+
       _currentPlayer = null;
       print('[Voice] TTS playback done');
       _safeAdd(_ttsDoneController, null);
-      if (!_isDisposed) {
+      if (!_isDisposed && !_exitPending) {
         await Future.delayed(Duration(milliseconds: 300));
-        if (!_isDisposed) {
+        if (!_isDisposed && !_exitPending) {
           startListening();
           print('[Voice] Resumed mic after TTS');
         }
@@ -262,6 +282,7 @@ class VoiceService {
   }
 
   static Future<List<String>> listMicrophones() async {
+    if (!Platform.isWindows) return [];
     try {
       final result = await Process.run(
         _ffmpegPath,
@@ -285,6 +306,7 @@ class VoiceService {
   }
 
   static Future<List<String>> listSpeakers() async {
+    if (!Platform.isWindows) return [];
     try {
       final result = await Process.run('powershell', [
         '-NoProfile', '-NonInteractive', '-Command',
@@ -301,9 +323,18 @@ class VoiceService {
   Future<bool> startListening() async {
     if (_isDisposed) return false;
 
+    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS && !Platform.isAndroid) {
+      print('[Voice] Voice recording not supported on this platform');
+      return false;
+    }
+
     if (_alwaysListening) {
       await stopListening();
       await Future.delayed(Duration(milliseconds: 300));
+    }
+
+    if (Platform.isAndroid) {
+      return _startAndroidListening();
     }
 
     try {
@@ -367,6 +398,32 @@ class VoiceService {
     return started;
   }
 
+  Future<bool> _startAndroidListening() async {
+    try {
+      _micRecorder ??= MicRecorder();
+      _processAudioStream(_micRecorder!.pcm);
+      final started = await _micRecorder!.start();
+      if (!started) {
+        print('[Voice] Android mic start failed');
+        _audioStreamSub?.cancel();
+        _audioStreamSub = null;
+        _safeAdd(_avatarStateController, 'error');
+        return false;
+      }
+      _alwaysListening = true;
+      _vadState = VadState.listening;
+      _safeAdd(_vadStateController, _vadState);
+      _safeAdd(_avatarStateController, 'listening');
+      print('[Voice] Android listening started');
+      return true;
+    } catch (e) {
+      print('[Voice] Android start listening error: $e');
+      _alwaysListening = false;
+      _safeAdd(_avatarStateController, 'error');
+      return false;
+    }
+  }
+
   Future<String?> _detectDefaultMic() async {
     final mics = await listMicrophones();
     return mics.isNotEmpty ? mics.first : null;
@@ -375,7 +432,8 @@ class VoiceService {
   void _processAudioStream(Stream<List<int>> audioStream) {
     List<int> remaining = [];
 
-    audioStream.listen(
+    _audioStreamSub?.cancel();
+    _audioStreamSub = audioStream.listen(
       (data) {
         final combined = [...remaining, ...data];
         remaining = [];
@@ -524,7 +582,12 @@ class VoiceService {
     _safeAdd(_vadStateController, _vadState);
 
     try {
-      if (_recordingProcess != null) {
+      await _audioStreamSub?.cancel();
+      _audioStreamSub = null;
+
+      if (Platform.isAndroid) {
+        await _micRecorder?.stop();
+      } else if (_recordingProcess != null) {
         try {
           _recordingProcess!.stdin.write('q');
           await _recordingProcess!.stdin.flush();
@@ -566,6 +629,9 @@ class VoiceService {
   void dispose() {
     _isDisposed = true;
     _alwaysListening = false;
+    _audioStreamSub?.cancel();
+    _audioStreamSub = null;
+    _micRecorder?.stop();
     _recordingProcess?.kill();
     _stderrSub?.cancel();
     _stdoutSub?.cancel();

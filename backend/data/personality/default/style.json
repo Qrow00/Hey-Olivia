@@ -1,0 +1,14 @@
+{
+  "style": {
+    "formality": 1.0,
+    "humor": 0.5,
+    "verbosity": 0.25839812599681095,
+    "empathy": 0.36377591706539036,
+    "directness": 1.0,
+    "enthusiasm": 0.7546966374269001
+  },
+  "preferred_name": "Test",
+  "user_preferences": {},
+  "interaction_count": 0,
+  "introduced": true
+}

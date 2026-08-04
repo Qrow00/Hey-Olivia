@@ -1048,7 +1048,8 @@ Return ONLY valid JSON, no explanation."""
             )
             content = response["message"]["content"].strip()
             content = re.sub(r'```json\n?|\n?```', '', content).strip()
-            result = json.loads(content)
+            start = content.find("{")
+            result = json.JSONDecoder().raw_decode(content[start:])[0] if start >= 0 else json.loads(content)
             if result.get("handler"):
                 return result
         except Exception as e:

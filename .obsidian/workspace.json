@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "e213be07b8393e04",
+        "id": "0d4be3f265cc5e5c",
         "type": "tabs",
         "children": [
           {
-            "id": "6c813be104768a86",
+            "id": "6e99e85ec0cbbb48",
             "type": "leaf",
             "state": {
               "type": "graph",
@@ -37,7 +37,9 @@
               "type": "file-explorer",
               "state": {
                 "sortOrder": "alphabetical",
-                "autoReveal": true
+                "autoReveal": true,
+                "showSearch": false,
+                "searchQuery": ""
               },
               "icon": "lucide-folder-closed",
               "title": "Files"
@@ -176,8 +178,20 @@
       "bases:Create new base": false
     }
   },
-  "active": "6c813be104768a86",
+  "active": "6e99e85ec0cbbb48",
   "lastOpenFiles": [
+    "backend/data/conversation_memory_default.json",
+    "backend/server_test_err.log",
+    "backend/server_test.log",
+    "data/voices/profiles.json",
+    "data/voices",
+    "data",
+    "client/lib/services/health_bridge_service.dart",
+    "client/android/app/src/main/kotlin/com/jarvis/jarvis_app/HealthBridgePlugin.kt",
+    "client/lib/overlay/overlay_manager.dart",
+    "client/lib/overlay/overlay_widget.dart",
+    "client/lib/overlay",
+    "vault/memory/Context/Project scope.md",
     "vault/Personality System.md",
     "vault/Routines & Automation.md",
     "vault/Morning Briefing.md",
@@ -194,16 +208,6 @@
     "vault/SETUP.md",
     "vault/DATA_STRUCTURE.md",
     "vault/AGENTS.md",
-    "client/build/e2b161ad",
-    "client/build/windows/x64/x64/Debug/INSTALL/INSTALL.tlog/unsuccessfulbuild",
-    "client/build/windows/x64/runner/jarvis_app.dir/Debug/jarvis_app.tlog/unsuccessfulbuild",
-    "client/build/windows/x64/plugins/record_windows/record_windows_plugin.dir/Debug/record_w.D9C13C8F.tlog/unsuccessfulbuild",
-    "client/build/windows/x64/flutter/flutter_wrapper_plugin.dir/Debug/flutter_.CDD5C498.tlog/unsuccessfulbuild",
-    "client/build/windows/x64/flutter/flutter_wrapper_app.dir/Debug/flutter_.41C15065.tlog/unsuccessfulbuild",
-    "client/build/windows/x64/flutter/x64/Debug/flutter_assemble/flutter_assemble.tlog/unsuccessfulbuild",
-    "client/build/windows/x64/x64/Debug/ZERO_CHECK/ZERO_CHECK.tlog/unsuccessfulbuild",
-    "client/build/windows/x64/plugins/jni/shared/INSTALL.vcxproj.tmpfa075",
-    "client/build/windows/x64/plugins/jni/INSTALL.vcxproj.tmpe2acf",
     "backend/SETUP.md",
     "backend/API_DOCS.md",
     "vault/ROADMAP.md",
@@ -222,7 +226,6 @@
     "client/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_128.png",
     "client/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_16.png",
     "2026-07-18.md",
-    "Untitled.canvas",
-    "node_modules/typescript/SECURITY.md"
+    "Untitled.canvas"
   ]
 }

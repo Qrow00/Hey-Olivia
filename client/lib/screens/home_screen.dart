@@ -3,6 +3,16 @@ import 'dart:async';
 import '../widgets/avatar_widget.dart';
 import '../services/websocket_service.dart';
 import '../services/voice_service.dart';
+import '../utils/responsive.dart';
+
+const _bg = Color(0xFF080818);
+const _panel = Color(0xFF10102a);
+const _hud = Color(0xFF00e5ff);
+const _hudDim = Color(0xFF0077b6);
+const _text = Color(0xFFE0E0E0);
+const _textDim = Color(0xFF6e7681);
+const _danger = Color(0xFFFF6D00);
+const _success = Color(0xFF00C853);
 
 class HomeScreen extends StatefulWidget {
   final WebSocketService webSocketService;
@@ -24,6 +34,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _wakeWordMode = false;
   VoicePhase _voicePhase = VoicePhase.wakeWord;
   final TextEditingController _chatController = TextEditingController();
+  final ScrollController _chatScrollController = ScrollController();
+  List<_ChatMessage> _chatHistory = [];
+  bool _chatExpanded = false;
 
   StreamSubscription? _avatarSubscription;
   StreamSubscription? _transcriptionSubscription;
@@ -66,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _transcription = text;
         _lastMessage = 'You said: $text';
       });
+      _addChatMessage('You', text, _hud);
     });
 
     _ttsDoneSubscription = _voiceService.ttsDone.listen((_) {
@@ -85,6 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _responseSubscription = _voiceService.response.listen((response) {
       setState(() => _lastMessage = response);
+      _addChatMessage('J.A.R.V.I.S.', response, _hud);
       _words = response.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
       _wordIndex = 0;
       if (_avatarState == 'speaking') {
@@ -99,20 +114,34 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _addChatMessage(String sender, String content, Color color) {
+    setState(() {
+      _chatHistory.add(_ChatMessage(sender, content, DateTime.now(), color));
+      if (_chatHistory.length > 50) {
+        _chatHistory = _chatHistory.sublist(-50);
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_chatScrollController.hasClients) {
+        _chatScrollController.animateTo(
+          _chatScrollController.position.maxScrollExtent,
+          duration: Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
   void _startWordPulse() {
     _stopWordPulse();
     if (_words.isEmpty) return;
-
     _wordPulseTimer = Timer.periodic(Duration(milliseconds: 150), (timer) {
       if (!mounted || _avatarState != 'speaking') {
         _stopWordPulse();
         return;
       }
-
       if (_wordIndex < _words.length) {
-        setState(() {
-          _wordPulse = !_wordPulse;
-        });
+        setState(() => _wordPulse = !_wordPulse);
         _wordIndex++;
       } else {
         _stopWordPulse();
@@ -127,19 +156,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _setupConnectionWatch() {
     setState(() => _isConnected = widget.webSocketService.isConnected);
-
     _messageSubscription = widget.webSocketService.messages.listen((_) {
-      if (!_isConnected) {
-        setState(() => _isConnected = true);
-      }
+      if (!_isConnected) setState(() => _isConnected = true);
     });
-
     Timer.periodic(Duration(seconds: 2), (timer) {
       if (mounted) {
         final connected = widget.webSocketService.isConnected;
-        if (connected != _isConnected) {
-          setState(() => _isConnected = connected);
-        }
+        if (connected != _isConnected) setState(() => _isConnected = connected);
       } else {
         timer.cancel();
       }
@@ -156,25 +179,21 @@ class _HomeScreenState extends State<HomeScreen> {
     _messageSubscription?.cancel();
     _ttsDoneSubscription?.cancel();
     _voiceService.dispose();
+    _chatController.dispose();
+    _chatScrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF0a0a1a),
+      backgroundColor: _bg,
       body: SafeArea(
         child: Column(
           children: [
             _buildStatusBar(),
-            Expanded(
-              child: Center(
-                child: AvatarWidget(
-                  currentState: _avatarState,
-                  wordPulse: _wordPulse,
-                ),
-              ),
-            ),
+            Expanded(child: _buildAvatarSection()),
+            _buildChatHistory(),
             _buildBottomPanel(),
           ],
         ),
@@ -183,154 +202,192 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildStatusBar() {
-    final isCommandPhase = _voicePhase == VoicePhase.command;
+    final isCmd = _voicePhase == VoicePhase.command;
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: Display.isTablet(context) ? 24 : 16, vertical: 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _isConnected ? Colors.green : Colors.red,
-                ),
-              ),
-              SizedBox(width: 8),
-              Text(
-                _isConnected ? 'Connected' : 'Disconnected',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _wakeWordMode
-                      ? (isCommandPhase ? Colors.orange : Colors.green)
-                      : Colors.grey,
-                ),
-              ),
-              SizedBox(width: 6),
-              Text(
-                _wakeWordMode
-                    ? (isCommandPhase ? 'Command' : 'Wake Word')
-                    : 'Muted',
-                style: TextStyle(
-                  color: _wakeWordMode
-                      ? (isCommandPhase ? Colors.orange : Colors.green)
-                      : Colors.grey,
-                  fontSize: 12,
-                ),
-              ),
-              SizedBox(width: 12),
-              Text(
-                'J.A.R.V.I.S.',
-                style: TextStyle(
-                  color: Colors.cyan,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
+          _statusDot(_isConnected ? _success : Colors.red),
+          SizedBox(width: 6),
+          Text(_isConnected ? 'ONLINE' : 'OFFLINE',
+              style: TextStyle(color: _isConnected ? _success : Colors.red, fontSize: 10, letterSpacing: 1.2)),
+          SizedBox(width: 16),
+          _statusDot(_wakeWordMode ? (isCmd ? _danger : _success) : _textDim),
+          SizedBox(width: 6),
+          Text(_wakeWordMode ? (isCmd ? 'CMD' : 'AWAKE') : 'CHAT',
+              style: TextStyle(color: _wakeWordMode ? (isCmd ? _danger : _success) : _textDim, fontSize: 10, letterSpacing: 1.2)),
+          Spacer(),
+          Text('J.A.R.V.I.S.', style: TextStyle(color: _hud, fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
         ],
+      ),
+    );
+  }
+
+  Widget _statusDot(Color color) {
+    return Container(
+      width: 6, height: 6,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+    );
+  }
+
+  Widget _buildAvatarSection() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16),
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: AvatarWidget(
+          currentState: _avatarState,
+          wordPulse: _wordPulse,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatHistory() {
+    if (_chatHistory.isEmpty) return SizedBox.shrink();
+    return GestureDetector(
+      onVerticalDragUpdate: (details) {
+        if (details.delta.dy < -20) setState(() => _chatExpanded = true);
+        if (details.delta.dy > 20) setState(() => _chatExpanded = false);
+      },
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 200),
+        height: _chatExpanded ? 200 : 60,
+        margin: EdgeInsets.symmetric(horizontal: Display.isTablet(context) ? 48 : 12),
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _hud.withValues(alpha: 0.1), width: 0.5),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Row(
+                children: [
+                  Text('HISTORY', style: TextStyle(color: _textDim, fontSize: 9, letterSpacing: 1)),
+                  Spacer(),
+                  Icon(_chatExpanded ? Icons.expand_more : Icons.expand_less,
+                      color: _textDim, size: 16),
+                ],
+              ),
+            ),
+            Expanded(
+              child: _chatExpanded
+                  ? ListView.builder(
+                      controller: _chatScrollController,
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      itemCount: _chatHistory.length,
+                      itemBuilder: (ctx, i) {
+                        final msg = _chatHistory[i];
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(msg.sender == 'You' ? '>' : '#',
+                                  style: TextStyle(color: msg.color, fontSize: 11)),
+                              SizedBox(width: 6),
+                              Expanded(
+                                child: Text(msg.content,
+                                    style: TextStyle(color: _text, fontSize: 12),
+                                    maxLines: 3, overflow: TextOverflow.ellipsis),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    )
+                  : ListView(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      children: [
+                        Text(
+                          _chatHistory.last.sender == 'You'
+                              ? '> ${_chatHistory.last.content}'
+                              : '# ${_chatHistory.last.content}',
+                          style: TextStyle(color: _chatHistory.last.color, fontSize: 12),
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildBottomPanel() {
-    String statusText;
+    String status;
     switch (_avatarState) {
       case 'listening':
-        statusText = _voicePhase == VoicePhase.command
-            ? 'Listening for command...'
-            : 'Listening...';
-        break;
+        status = _voicePhase == VoicePhase.command ? 'Listening for command...' : 'Listening...';
       case 'thinking':
-        statusText = 'Processing...';
-        break;
+        status = 'Processing...';
       case 'speaking':
-        statusText = 'Speaking...';
-        break;
+        status = 'Speaking...';
       case 'error':
-        statusText = 'Something went wrong. Try again.';
-        break;
+        status = 'Something went wrong. Try again.';
       default:
         if (_wakeWordMode) {
-          statusText = _voicePhase == VoicePhase.command
-              ? 'Command received. Speak your request...'
+          status = _voicePhase == VoicePhase.command
+              ? 'Command received. Speak...'
               : 'Say "Hey Jarvis" to activate';
         } else {
-          statusText = _lastMessage;
+          status = 'Type a message below to chat';
         }
     }
 
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: Display.padding(context),
       decoration: BoxDecoration(
-        color: Color(0xFF1a1a2e),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(top: BorderSide(color: _hud.withValues(alpha: 0.1), width: 0.5)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            statusText,
-            style: TextStyle(
-              color: _avatarState == 'speaking' ? Colors.cyan : Colors.white54,
-              fontSize: 14,
-              fontStyle: _avatarState == 'idle' ? FontStyle.normal : FontStyle.italic,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          SizedBox(height: 12),
-          _buildChatBar(),
+          Text(status,
+              style: TextStyle(
+                color: _avatarState == 'speaking' ? _hud : _textDim,
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+          SizedBox(height: 8),
+          _buildChatInput(),
         ],
       ),
     );
   }
 
-  Widget _buildChatBar() {
+  Widget _buildChatInput() {
     return Container(
       decoration: BoxDecoration(
-        color: Color(0xFF0d1117),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: Colors.cyan.withValues(alpha: 0.3),
-        ),
+        color: _panel,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _hud.withValues(alpha: 0.15), width: 0.5),
       ),
       child: Row(
         children: [
           Expanded(
             child: TextField(
               controller: _chatController,
-              style: TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: _text, fontSize: 13),
               decoration: InputDecoration(
-                hintText: 'Type a message...',
-                hintStyle: TextStyle(color: Colors.white38),
+                hintText: 'Type message...',
+                hintStyle: TextStyle(color: _textDim),
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               ),
               textInputAction: TextInputAction.send,
-              onSubmitted: (text) => _sendChat(text),
+              onSubmitted: (t) => _sendChat(t),
             ),
           ),
           IconButton(
-            icon: Icon(Icons.send, color: Colors.cyan),
+            icon: Icon(Icons.send, color: _hud, size: 18),
             onPressed: () => _sendChat(_chatController.text),
+            padding: EdgeInsets.all(8),
           ),
         ],
       ),
@@ -342,4 +399,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _voiceService.sendTextMessage(text.trim());
     _chatController.clear();
   }
+}
+
+class _ChatMessage {
+  final String sender;
+  final String content;
+  final DateTime time;
+  final Color color;
+  _ChatMessage(this.sender, this.content, this.time, this.color);
 }

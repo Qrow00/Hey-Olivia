@@ -7,6 +7,7 @@ import 'websocket_service.dart';
 class DeviceService {
   final WebSocketService _webSocketService;
   final String _baseUrl;
+  final String? _token;
 
   final _devicesController = StreamController<List<Device>>.broadcast();
   final _deviceUpdateController = StreamController<Device>.broadcast();
@@ -15,11 +16,15 @@ class DeviceService {
   Stream<List<Device>> get devices => _devicesController.stream;
   Stream<Device> get deviceUpdate => _deviceUpdateController.stream;
   Stream<Map<String, dynamic>> get deviceEvents => _deviceEventController.stream;
+  Map<String, String> get _headers => {
+        'Content-Type': 'application/json',
+        if (_token != null) 'Authorization': 'Bearer $_token',
+      };
 
   List<Device> _devices = [];
 
-  DeviceService(this._webSocketService, {required String baseUrl})
-      : _baseUrl = baseUrl {
+  DeviceService(this._webSocketService, {required String baseUrl, String? token})
+      : _baseUrl = baseUrl, _token = token {
     _webSocketService.messages.listen(_handleMessage);
   }
 
@@ -84,7 +89,7 @@ class DeviceService {
 
   Future<List<Device>> fetchDevices() async {
     try {
-      final response = await http.get(Uri.parse('$_baseUrl/api/devices'));
+      final response = await http.get(Uri.parse('$_baseUrl/api/v1/devices'), headers: _headers);
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         _devices = data.map((json) => Device.fromJson(json)).toList();
@@ -106,8 +111,8 @@ class DeviceService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$_baseUrl/api/devices'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse('$_baseUrl/api/v1/devices'),
+        headers: _headers,
         body: json.encode({
           'name': name,
           'type': type,
@@ -120,6 +125,7 @@ class DeviceService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         await fetchDevices();
+        if (_devices.isEmpty) return null;
         return _devices.firstWhere(
           (d) => d.id == data['device_id'],
           orElse: () => _devices.last,
@@ -134,7 +140,8 @@ class DeviceService {
   Future<bool> removeDevice(String deviceId) async {
     try {
       final response = await http.delete(
-        Uri.parse('$_baseUrl/api/devices/$deviceId'),
+        Uri.parse('$_baseUrl/api/v1/devices/$deviceId'),
+        headers: _headers,
       );
 
       if (response.statusCode == 200) {

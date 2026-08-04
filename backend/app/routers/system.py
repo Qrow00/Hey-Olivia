@@ -2,6 +2,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
 from app.services.system_config import system_config_service
+from app.services.tailscale_service import tailscale_service
+from app.services.settings_service import settings_service
 
 router = APIRouter()
 
@@ -61,3 +63,20 @@ async def health():
         "has_gpu": specs["gpu"]["has_gpu"],
         "cpu_count": specs["cpu_count"],
     }
+
+
+@router.get("/welcome")
+async def welcome():
+    tailscale = await tailscale_service.get_status()
+    return {
+        "version": "2.0.0",
+        "hostname": system_config_service.detect_specs().get("hostname", "jarvis-server"),
+        "services": ["voice", "monitoring", "browser"],
+        "tailscale": tailscale,
+        "settings": settings_service.get_all(),
+    }
+
+
+@router.get("/tailscale")
+async def get_tailscale():
+    return await tailscale_service.get_status()

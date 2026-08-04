@@ -16,9 +16,9 @@
 - All `_call()` to browser worker must use `asyncio.to_thread`
 
 ## GPU & Inference
-- **GPU:** AMD Radeon RX 6600 (8GB VRAM)
-- **Local LLM:** Ollama with `llama3.2:latest` (2.0 GB)
-- **STT:** Whisper `tiny` model (auto-detects CUDA via `torch.cuda.is_available()`)
+- **GPU:** NVIDIA GeForce GTX 1050 (Pascal, CC 6.1, 4GB VRAM)
+- **Local LLM:** Ollama with `llama3.2:latest` (2.0 GB) — **CPU runner** (`OLLAMA_LLM_LIBRARY=cpu`), GTX 1050 can't JIT bundled CUDA PTX
+- **STT:** Whisper `base` model (CUDA via `torch.cuda.is_available()`, GTX 1050 supported)
 - **TTS:** Edge TTS (`en-US-GuyNeural` default)
 - **Cloud LLM:** Nemotron Ultra 550B via NVIDIA NIM API (planned)
 

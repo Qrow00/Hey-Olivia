@@ -1,3 +1,4 @@
+import base64
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -13,6 +14,7 @@ class ChatRequest(BaseModel):
     message: str
     system_prompt: str = "You are J.A.R.V.I.S., a helpful AI assistant."
     conversation_history: Optional[List[dict]] = None
+    profile_id: str = "default"
 
 
 class VoiceConfig(BaseModel):
@@ -53,7 +55,8 @@ async def chat_completion(request: ChatRequest):
         result = await voice_service.chat_completion(
             message=request.message,
             system_prompt=request.system_prompt,
-            conversation_history=request.conversation_history
+            conversation_history=request.conversation_history,
+            profile_id=request.profile_id,
         )
         return result
     except Exception as e:
@@ -64,21 +67,23 @@ async def chat_completion(request: ChatRequest):
 async def voice_pipeline(
     audio: UploadFile = File(...),
     system_prompt: str = "You are J.A.R.V.I.S., a helpful AI assistant.",
-    tts_voice: Optional[str] = None
+    tts_voice: Optional[str] = None,
+    profile_id: str = "default",
 ):
     try:
         audio_data = await audio.read()
         result = await voice_service.voice_pipeline(
             audio_data=audio_data,
             system_prompt=system_prompt,
-            tts_voice=tts_voice
+            tts_voice=tts_voice,
+            profile_id=profile_id,
         )
         return {
             "transcription": result["transcription"],
             "confidence": result["confidence"],
             "response": result["response"],
             "model": result["model"],
-            "audio_base64": result["audio"].hex()
+            "audio_base64": base64.b64encode(result["audio"]).decode()
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

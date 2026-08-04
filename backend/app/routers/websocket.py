@@ -2,6 +2,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import json
 import base64
 import asyncio
+import re
 from datetime import datetime, timezone
 from app.services.voice_service import voice_service
 from app.services.screen_share_service import screen_share_service
@@ -15,12 +16,37 @@ from app.services.personality_service import personality_service
 
 router = APIRouter()
 
-connected_clients: list[WebSocket] = []
+_WAKE_PHRASE_PATTERNS = [
+    re.compile(r"^\s*hey\s+jar[a-z]*", re.IGNORECASE),
+    re.compile(r"^\s*jarvis", re.IGNORECASE),
+]
 
 
-def _build_system_prompt(extra_instructions: str = "", user_message: str = "") -> str:
+def _strip_wake_phrase(text: str) -> str:
+    cleaned = text.strip()
+    for pattern in _WAKE_PHRASE_PATTERNS:
+        match = pattern.match(cleaned)
+        if match:
+            return cleaned[match.end():].strip(" .,!?")
+    return cleaned
+
+from collections import defaultdict
+from dataclasses import dataclass, field
+
+@dataclass
+class ClientInfo:
+    ws: WebSocket
+    client_id: int
+    device_id: str = ""
+    profile_id: str = ""
+
+
+connected_clients: dict[str, list[ClientInfo]] = defaultdict(list)
+
+
+def _build_system_prompt(extra_instructions: str = "", user_message: str = "", profile_id: str = "default") -> str:
     """Build system prompt with browser state and RAG context."""
-    base_prompt = personality_service.get_system_prompt()
+    base_prompt = personality_service.get_system_prompt(profile_id)
     browser_state = hermes_browser.get_browser_state_for_llm()
     
     prompt = f"You are JARVIS.\n{base_prompt}"
@@ -565,17 +591,18 @@ COMMAND_RESPONSES = {
 async def _heartbeat_loop():
     while True:
         await asyncio.sleep(15)
-        disconnected = []
-        for client in connected_clients:
-            try:
-                await client.send_json({"type": "ping"})
-            except Exception:
-                disconnected.append(client)
-        for client in disconnected:
-            try:
-                connected_clients.remove(client)
-            except ValueError:
-                pass
+        for profile_id in list(connected_clients.keys()):
+            remaining = []
+            for info in connected_clients[profile_id]:
+                try:
+                    await info.ws.send_json({"type": "ping"})
+                    remaining.append(info)
+                except Exception:
+                    pass
+            if remaining:
+                connected_clients[profile_id] = remaining
+            else:
+                del connected_clients[profile_id]
 
 
 async def safe_send(ws: WebSocket, message: dict) -> bool:
@@ -586,29 +613,37 @@ async def safe_send(ws: WebSocket, message: dict) -> bool:
         return False
 
 
-async def broadcast(message: dict, exclude: WebSocket = None):
-    for client in connected_clients:
-        if client != exclude:
-            try:
-                await client.send_json(message)
-            except:
-                pass
+async def broadcast(message: dict, exclude: WebSocket = None, profile_id: str = None):
+    for pid in list(connected_clients.keys()):
+        if profile_id and pid != profile_id:
+            continue
+        for info in connected_clients[pid]:
+            if info.ws != exclude:
+                try:
+                    await info.ws.send_json(message)
+                except:
+                    pass
 
 
 async def send_to_device(device_id: str, message: dict):
-    for client, dev_id in client_devices.items():
-        if dev_id == device_id:
-            try:
-                await client.send_json(message)
-            except:
-                pass
+    for info_list in connected_clients.values():
+        for info in info_list:
+            if info.device_id == device_id:
+                try:
+                    await info.ws.send_json(message)
+                except:
+                    pass
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, token: str = ""):
+    from app.services.auth_service import auth_service
+    profile_id = auth_service.resolve_token(token) if token else None
     await websocket.accept()
-    connected_clients.append(websocket)
     client_id = id(websocket)
+
+    ci = ClientInfo(ws=websocket, client_id=client_id, profile_id=profile_id or "default")
+    connected_clients[ci.profile_id].append(ci)
 
     global _heartbeat_task
     if _heartbeat_task is None or _heartbeat_task.done():
@@ -624,7 +659,7 @@ async def websocket_endpoint(websocket: WebSocket):
         if client_id not in greeted_clients:
             greeted_clients.add(client_id)
             websocket_endpoint._greeted = greeted_clients
-            await send_greeting(websocket)
+            await send_greeting(websocket, ci.profile_id)
 
         while True:
             data = await websocket.receive_text()
@@ -633,13 +668,13 @@ async def websocket_endpoint(websocket: WebSocket):
             msg_type = message.get("type")
 
             if msg_type == "voice_chunk":
-                asyncio.create_task(handle_voice_chunk(websocket, message))
+                asyncio.create_task(handle_voice_chunk(websocket, message, ci.profile_id))
             elif msg_type == "text_message":
-                asyncio.create_task(handle_text_message(websocket, message))
+                asyncio.create_task(handle_text_message(websocket, message, ci.profile_id))
             elif msg_type == "ping":
                 await safe_send(websocket,{"type": "pong"})
             elif msg_type == "device_register":
-                await handle_device_register(websocket, message, client_id)
+                await handle_device_register(websocket, message, client_id, ci.profile_id)
             elif msg_type == "device_heartbeat":
                 await handle_device_heartbeat(websocket, message)
             elif msg_type == "device_status_update":
@@ -655,7 +690,7 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == "screen_unview":
                 await handle_screen_unview(websocket, message, client_id)
             elif msg_type == "screen_analyze":
-                await handle_screen_analyze(websocket, message)
+                await handle_screen_analyze(websocket, message, ci.profile_id)
             elif msg_type == "camera_view":
                 await handle_camera_view(websocket, message, client_id)
             elif msg_type == "camera_unview":
@@ -681,7 +716,7 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == "voice_profile_switch":
                 await handle_voice_profile_switch(websocket, message)
             elif msg_type == "personality_update":
-                await handle_personality_update(websocket, message)
+                await handle_personality_update(websocket, message, ci.profile_id)
             elif msg_type == "browser_create_session":
                 await handle_browser_create_session(websocket, message)
             elif msg_type == "browser_destroy_session":
@@ -721,9 +756,9 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == "ocr_screenshot":
                 await handle_ocr_screenshot(websocket, message)
             elif msg_type == "farewell":
-                await handle_farewell(websocket)
+                await handle_farewell(websocket, ci.profile_id)
             elif msg_type == "greeting":
-                await send_greeting(websocket)
+                await send_greeting(websocket, ci.profile_id)
             elif msg_type == "monitoring_snapshot":
                 await handle_monitoring_snapshot(websocket)
             elif msg_type == "monitoring_history":
@@ -793,7 +828,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         introduction_pending.discard(client_id)
-        connected_clients.remove(websocket)
+        info_list = connected_clients.get(ci.profile_id, [])
+        connected_clients[ci.profile_id] = [c for c in info_list if c.client_id != client_id]
+        if not connected_clients[ci.profile_id]:
+            del connected_clients[ci.profile_id]
+
         device_id = client_devices.pop(client_id, None)
         client_voice_state.pop(client_id, None)
 
@@ -814,12 +853,13 @@ async def websocket_endpoint(websocket: WebSocket):
         })
 
 
-async def send_greeting(websocket: WebSocket):
+async def send_greeting(websocket: WebSocket, profile_id: str = "default"):
     from app.services.voice_service import voice_service
     from app.services.voice_profile_service import voice_profile_service
 
     try:
-        if not personality_service.introduced:
+        pdata = personality_service.get_profile(profile_id)
+        if not pdata.introduced:
             introduction_pending.add(id(websocket))
             intro_text = (
                 f"Hello! I am JARVIS, your personal AI assistant. "
@@ -863,7 +903,7 @@ async def send_greeting(websocket: WebSocket):
         else:
             period = "evening"
 
-        greeting_text = f"Good {period}, {personality_service.preferred_name}. How may I assist you today?"
+        greeting_text = f"Good {period}, {pdata.preferred_name}. How may I assist you today?"
 
         profile = voice_profile_service.get_active_profile()
         tts_audio = await voice_service.text_to_speech(
@@ -886,6 +926,15 @@ async def send_greeting(websocket: WebSocket):
             "is_greeting": True,
         })
 
+        from app.services.settings_service import settings_service
+        from app.services.tailscale_service import tailscale_service
+
+        await safe_send(websocket,{
+            "type": "welcome_info",
+            "settings": settings_service.get_all(),
+            "tailscale": await tailscale_service.get_status(),
+        })
+
         await safe_send(websocket,{
             "type": "avatar_state",
             "state": "idle"
@@ -894,21 +943,22 @@ async def send_greeting(websocket: WebSocket):
         print(f"[GREETING ERROR] {e}")
 
 
-async def handle_farewell(websocket: WebSocket):
+async def handle_farewell(websocket: WebSocket, profile_id: str = "default"):
     from app.services.voice_service import voice_service
     from app.services.voice_profile_service import voice_profile_service
 
+    pdata = personality_service.get_profile(profile_id)
     try:
         hour = datetime.now().hour
 
         if 5 <= hour < 12:
-            farewell_text = f"Good morning, {personality_service.preferred_name}. Have a productive day ahead."
+            farewell_text = f"Good morning, {pdata.preferred_name}. Have a productive day ahead."
         elif 12 <= hour < 17:
-            farewell_text = f"Good afternoon, {personality_service.preferred_name}. I will be here when you need me."
+            farewell_text = f"Good afternoon, {pdata.preferred_name}. I will be here when you need me."
         elif 17 <= hour < 21:
-            farewell_text = f"Good evening, {personality_service.preferred_name}. Take care and I will see you later."
+            farewell_text = f"Good evening, {pdata.preferred_name}. Take care and I will see you later."
         else:
-            farewell_text = f"Good night, {personality_service.preferred_name}. Sleep well and I will be ready when you return."
+            farewell_text = f"Good night, {pdata.preferred_name}. Sleep well and I will be ready when you return."
 
         profile = voice_profile_service.get_active_profile()
         tts_audio = await voice_service.text_to_speech(
@@ -939,13 +989,26 @@ async def handle_farewell(websocket: WebSocket):
         print(f"[FAREWELL ERROR] {e}")
 
 
-async def handle_device_register(websocket: WebSocket, message: dict, client_id: int):
+async def handle_device_register(websocket: WebSocket, message: dict, client_id: int, profile_id: str = "default"):
     device_id = message.get("device_id", "unknown")
+    device_type = message.get("type", "unknown")
     client_devices[client_id] = device_id
+
+    if device_type == "phone":
+        from app.services.wearable_service import wearable_service, WearableDevice
+        wd = WearableDevice(
+            id=device_id,
+            name=message.get("name", "Phone"),
+            type="phone",
+            platform=message.get("platform", "android"),
+            is_online=True,
+        )
+        await wearable_service.register_device(wd, user_id=profile_id)
 
     await safe_send(websocket,{
         "type": "device_registered",
         "device_id": device_id,
+        "device_type": device_type,
         "server_time": datetime.now(timezone.utc).isoformat(),
     })
 
@@ -986,7 +1049,7 @@ async def handle_device_status_update(websocket: WebSocket, message: dict):
     }, websocket)
 
 
-async def handle_voice_chunk(websocket: WebSocket, message: dict):
+async def handle_voice_chunk(websocket: WebSocket, message: dict, profile_id: str = "default"):
     from app.services.voice_profile_service import voice_profile_service
     from app.services.wake_word_service import wake_word_service
 
@@ -1000,17 +1063,18 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                 return
             audio_data = base64.b64decode(audio_b64)
             stt_result = await voice_service.speech_to_text(audio_data)
+            pdata = personality_service.get_profile(profile_id)
             name = stt_result["text"].strip().strip(".").strip()
             name = " ".join(w.capitalize() for w in name.split() if w.isalpha())
             if name:
-                personality_service.preferred_name = name
-                personality_service.introduced = True
-                personality_service._save()
+                pdata.preferred_name = name
+                pdata.introduced = True
+                pdata._save()
                 response_text = f"Nice to meet you, {name}! I will remember that. How may I assist you today?"
             else:
-                personality_service.preferred_name = "Boss"
-                personality_service.introduced = True
-                personality_service._save()
+                pdata.preferred_name = "Boss"
+                pdata.introduced = True
+                pdata._save()
                 response_text = "No problem! I will call you Boss. How may I assist you today?"
             profile = voice_profile_service.get_active_profile()
             tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice, rate=profile.rate, pitch=profile.pitch)
@@ -1034,7 +1098,7 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
         is_wake_word_check = message.get("wake_word_check", False)
 
         if not is_wake_word_check:
-            await _process_voice_command(websocket, ws_id, audio_data, message)
+            await _process_voice_command(websocket, ws_id, audio_data, message, profile_id)
             return
 
         if not wake_word_service._active:
@@ -1048,20 +1112,35 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
 
         detected = wake_word_service.process_bytes(audio_data)
 
-        if detected:
-            print(f"[WS] Wake word DETECTED")
-            client_voice_state[ws_id] = {
-                "phase": "command",
-                "buffer": bytearray(),
-                "silence_frames": 0,
-                "speech_started": False,
-            }
-            await safe_send(websocket, {
-                "type": "wake_word_detected",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
-        else:
+        if not detected:
             await safe_send(websocket, {"type": "wake_word_miss"})
+            return
+
+        print(f"[WS] Wake word DETECTED")
+        client_voice_state[ws_id] = {
+            "phase": "command",
+            "buffer": bytearray(),
+            "silence_frames": 0,
+            "speech_started": False,
+        }
+        await safe_send(websocket, {
+            "type": "wake_word_detected",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+        try:
+            duration = len(audio_data) / 2 / 16000
+            if duration > 1.2:
+                stt_result = await voice_service.speech_to_text(audio_data)
+                command_text = _strip_wake_phrase(stt_result["text"])
+                if command_text:
+                    print(f"[WS] Command spoken in same utterance: '{command_text}'")
+                    await _process_voice_command(
+                        websocket, ws_id, audio_data, message, profile_id,
+                        transcription_override=command_text,
+                    )
+        except Exception as e:
+            print(f"[WS] Wake word tail processing error: {e}")
 
     except Exception as e:
         print(f"[VOICE CHUNK ERROR] {type(e).__name__}: {e}")
@@ -1103,12 +1182,15 @@ async def handle_voice_chunk(websocket: WebSocket, message: dict):
                 pass
 
 
-async def _process_voice_command(websocket: WebSocket, ws_id: int, audio_data: bytes, message: dict):
+async def _process_voice_command(websocket: WebSocket, ws_id: int, audio_data: bytes, message: dict, profile_id: str = "default", transcription_override: str = None):
     from app.services.voice_profile_service import voice_profile_service
 
     import time as _time
     _t0 = _time.time()
-    stt_result = await voice_service.speech_to_text(audio_data)
+    if transcription_override is not None:
+        stt_result = {"text": transcription_override, "confidence": 0.5}
+    else:
+        stt_result = await voice_service.speech_to_text(audio_data)
     _t1 = _time.time()
     transcription = stt_result["text"].strip().lower()
     print(f"[WS] STT took {_t1-_t0:.1f}s: '{transcription}'")
@@ -1127,8 +1209,9 @@ async def _process_voice_command(websocket: WebSocket, ws_id: int, audio_data: b
     _t3 = _time.time()
     print(f"[WS] Command parse took {_t3-_t2:.1f}s")
     if command_result["matched"]:
+        pdata = personality_service.get_profile(profile_id)
         if command_result["handler"] == "goodbye":
-            farewell_text = f"Goodbye, {personality_service.preferred_name}. It was a pleasure assisting you."
+            farewell_text = f"Goodbye, {pdata.preferred_name}. It was a pleasure assisting you."
             profile = voice_profile_service.get_active_profile()
             tts_audio = await voice_service.text_to_speech(
                 farewell_text,
@@ -1205,7 +1288,8 @@ async def _process_voice_command(websocket: WebSocket, ws_id: int, audio_data: b
         try:
             llm_response = await voice_service.chat_completion(
                 message=f"The user said: \"{transcription}\"\nCommand result: {result_message}\n\nRespond with a short natural sentence (1-2 lines) about what was done.",
-                system_prompt=_build_system_prompt("Keep responses under 2 sentences.", transcription),
+                system_prompt=_build_system_prompt("Keep responses under 2 sentences.", transcription, profile_id),
+                profile_id=profile_id,
             )
             response_text = llm_response["response"]
         except:
@@ -1244,7 +1328,8 @@ async def _process_voice_command(websocket: WebSocket, ws_id: int, audio_data: b
     _t4 = _time.time()
     llm_result = await voice_service.chat_completion(
         message=transcription,
-        system_prompt=message.get("system_prompt") or personality_service.get_system_prompt(),
+        system_prompt=message.get("system_prompt") or personality_service.get_system_prompt(profile_id),
+        profile_id=profile_id,
     )
     _t5 = _time.time()
     print(f"[WS] LLM took {_t5-_t4:.1f}s")
@@ -1280,7 +1365,7 @@ async def _process_voice_command(websocket: WebSocket, ws_id: int, audio_data: b
     })
 
 
-async def handle_text_message(websocket: WebSocket, message: dict):
+async def handle_text_message(websocket: WebSocket, message: dict, profile_id: str = "default"):
     from app.services.voice_profile_service import voice_profile_service
 
     await safe_send(websocket,{
@@ -1291,17 +1376,18 @@ async def handle_text_message(websocket: WebSocket, message: dict):
     try:
         if id(websocket) in introduction_pending:
             introduction_pending.discard(id(websocket))
+            pdata = personality_service.get_profile(profile_id)
             text = message.get("text", "").strip().strip(".").strip()
             name = " ".join(w.capitalize() for w in text.split() if w.isalpha())
             if name and len(name) < 30:
-                personality_service.preferred_name = name
-                personality_service.introduced = True
-                personality_service._save()
+                pdata.preferred_name = name
+                pdata.introduced = True
+                pdata._save()
                 response_text = f"Nice to meet you, {name}! I will remember that. How may I assist you today?"
             else:
-                personality_service.preferred_name = "Boss"
-                personality_service.introduced = True
-                personality_service._save()
+                pdata.preferred_name = "Boss"
+                pdata.introduced = True
+                pdata._save()
                 response_text = "No problem! I will call you Boss. How may I assist you today?"
             profile = voice_profile_service.get_active_profile()
             tts_audio = await voice_service.text_to_speech(response_text, voice=profile.voice, rate=profile.rate, pitch=profile.pitch)
@@ -1321,8 +1407,9 @@ async def handle_text_message(websocket: WebSocket, message: dict):
 
         command_result = command_registry.parse_command(text)
         if command_result["matched"]:
+            pdata = personality_service.get_profile(profile_id)
             if command_result["handler"] == "goodbye":
-                farewell_text = f"Goodbye, {personality_service.preferred_name}. It was a pleasure assisting you."
+                farewell_text = f"Goodbye, {pdata.preferred_name}. It was a pleasure assisting you."
                 profile = voice_profile_service.get_active_profile()
                 tts_audio = await voice_service.text_to_speech(
                     farewell_text,
@@ -1365,7 +1452,8 @@ async def handle_text_message(websocket: WebSocket, message: dict):
             try:
                 llm_response = await voice_service.chat_completion(
                     message=f"The user said: \"{text}\"\nCommand result: {result_message}{extra_info}\n\nRespond with a short natural sentence (1-2 lines) about what was done. Be helpful and conversational.",
-                    system_prompt=_build_system_prompt("Keep responses under 2 sentences.", text),
+                    system_prompt=_build_system_prompt("Keep responses under 2 sentences.", text, profile_id),
+                    profile_id=profile_id,
                 )
                 response_text = llm_response["response"]
             except:
@@ -1423,7 +1511,8 @@ async def handle_text_message(websocket: WebSocket, message: dict):
                     try:
                         llm_response = await voice_service.chat_completion(
                             message=f"The user said: \"{text}\"\nCommand executed: {llm_result.get('handler', 'unknown')}\nResult: {result_message}{extra_info}\n\nGenerate a brief natural response about what just happened. Never say 'Command executed' or 'Done'. Say something a human assistant would say, like 'I've opened Brave for you' or 'Here are your folders' or 'Muted your PC'. One sentence max.",
-                            system_prompt=_build_system_prompt("You just executed a system command for the user. Respond naturally in 1 sentence. Never use robotic phrases like 'command executed' or 'task completed'.", text),
+                            system_prompt=_build_system_prompt("You just executed a system command for the user. Respond naturally in 1 sentence. Never use robotic phrases like 'command executed' or 'task completed'.", text, profile_id),
+                            profile_id=profile_id,
                         )
                         response_text = llm_response["response"]
                     except:
@@ -1462,8 +1551,9 @@ async def handle_text_message(websocket: WebSocket, message: dict):
 
         result = await voice_service.chat_completion(
             message=text,
-            system_prompt=_build_system_prompt(user_message=text),
-            conversation_history=message.get("conversation_history")
+            system_prompt=_build_system_prompt(user_message=text, profile_id=profile_id),
+            conversation_history=message.get("conversation_history"),
+            profile_id=profile_id,
         )
 
         profile = voice_profile_service.get_active_profile()
@@ -1656,7 +1746,7 @@ async def handle_screen_unview(websocket: WebSocket, message: dict, client_id: i
         })
 
 
-async def handle_screen_analyze(websocket: WebSocket, message: dict):
+async def handle_screen_analyze(websocket: WebSocket, message: dict, profile_id: str = "default"):
     session_id = message.get("session_id")
     prompt = message.get("prompt", "Describe what is on this screen")
     frame_data = message.get("frame")
@@ -1675,6 +1765,7 @@ async def handle_screen_analyze(websocket: WebSocket, message: dict):
         result = await voice_service.chat_completion(
             message=f"[Screen Analysis Request]\n{prompt}\n\nNote: This is a placeholder response. Full OCR/vision analysis will be added with llava:7b integration.",
             system_prompt="You are J.A.R.V.I.S. analyzing a screen capture. Describe what you see.",
+            profile_id=profile_id,
         )
 
         await safe_send(websocket,{
@@ -1790,22 +1881,23 @@ async def handle_wearable_health_update(websocket: WebSocket, message: dict):
     if not device_id or not metric:
         return
 
-    wearable_service.record_metric(device_id, metric, value, unit)
+    await wearable_service.record_metric(device_id, metric, value, unit)
 
     for client_id_str in wearable_service.get_subscribers():
-        for client in connected_clients:
-            if str(id(client)) == client_id_str:
-                try:
-                    await client.send_json({
-                        "type": "wearable_health_data",
-                        "device_id": device_id,
-                        "metric": metric,
-                        "value": value,
-                        "unit": unit,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    })
-                except:
-                    pass
+        for info_list in connected_clients.values():
+            for info in info_list:
+                if str(info.client_id) == client_id_str:
+                    try:
+                        await info.ws.send_json({
+                            "type": "wearable_health_data",
+                            "device_id": device_id,
+                            "metric": metric,
+                            "value": value,
+                            "unit": unit,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
+                    except:
+                        pass
 
 
 async def handle_vision_analyze(websocket: WebSocket, message: dict):
@@ -1984,11 +2076,11 @@ async def handle_voice_profile_switch(websocket: WebSocket, message: dict):
     })
 
 
-async def handle_personality_update(websocket: WebSocket, message: dict):
+async def handle_personality_update(websocket: WebSocket, message: dict, profile_id: str = "default"):
     update_type = message.get("update_type")
 
     if update_type == "style":
-        result = personality_service.update_style(**{
+        result = personality_service.update_style(profile_id=profile_id, **{
             k: v for k, v in message.items()
             if k in ["formality", "humor", "verbosity", "empathy", "directness", "enthusiasm"]
         })
@@ -1996,18 +2088,21 @@ async def handle_personality_update(websocket: WebSocket, message: dict):
         result = personality_service.learn_opinion(
             message.get("topic", ""),
             message.get("stance", ""),
+            profile_id=profile_id,
         )
     elif update_type == "preference":
         result = personality_service.learn_preference(
             message.get("key", ""),
             message.get("value", ""),
+            profile_id=profile_id,
         )
     elif update_type == "feedback":
-        result = personality_service.adjust_from_feedback(message.get("feedback_type", ""))
+        result = personality_service.adjust_from_feedback(message.get("feedback_type", ""), profile_id=profile_id)
     elif update_type == "name":
-        personality_service.preferred_name = message.get("name", "Boss")
-        personality_service._save()
-        result = {"status": "updated", "name": personality_service.preferred_name}
+        pdata = personality_service.get_profile(profile_id)
+        pdata.preferred_name = message.get("name", "Boss")
+        pdata._save()
+        result = {"status": "updated", "name": pdata.preferred_name}
     else:
         result = {"status": "error", "message": f"Unknown update type: {update_type}"}
 

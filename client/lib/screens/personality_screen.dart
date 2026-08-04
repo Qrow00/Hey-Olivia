@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/personality_service.dart';
+import '../services/server_config.dart';
 
 class PersonalityScreen extends StatefulWidget {
   @override
@@ -7,22 +8,35 @@ class PersonalityScreen extends StatefulWidget {
 }
 
 class _PersonalityScreenState extends State<PersonalityScreen> {
-  final PersonalityService _personalityService = PersonalityService();
+  PersonalityService? _personalityService;
   Map _status = {};
   bool _loading = true;
+  bool _error = false;
 
   @override
   void initState() {
     super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    final config = await ServerConfig.load();
+    if (config == null) {
+      setState(() { _loading = false; _error = true; });
+      return;
+    }
+    _personalityService = PersonalityService(baseUrl: config.baseUrl);
     _loadStatus();
   }
 
   Future<void> _loadStatus() async {
-    final status = await _personalityService.getStatus();
-    setState(() {
-      _status = status;
-      _loading = false;
-    });
+    if (_personalityService == null) return;
+    try {
+      final status = await _personalityService!.getStatus();
+      setState(() { _status = status; _loading = false; });
+    } catch (_) {
+      setState(() { _loading = false; _error = true; });
+    }
   }
 
   @override
@@ -36,6 +50,20 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
       ),
       body: _loading
           ? Center(child: CircularProgressIndicator(color: Colors.cyan))
+          : _error
+          ? Center(child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.cloud_off, color: Colors.white38, size: 48),
+                SizedBox(height: 16),
+                Text('Cannot reach server', style: TextStyle(color: Colors.white38)),
+                SizedBox(height: 8),
+                TextButton(
+                  onPressed: () { setState(() { _loading = true; _error = false; }); _init(); },
+                  child: Text('Retry', style: TextStyle(color: Colors.cyan)),
+                ),
+              ],
+            ))
           : SingleChildScrollView(
               padding: EdgeInsets.all(16),
               child: Column(
@@ -212,7 +240,7 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
       label: Text(label, style: TextStyle(color: Colors.white70, fontSize: 12)),
       backgroundColor: Colors.white10,
       onPressed: () async {
-        await _personalityService.setFeedback(type);
+        await _personalityService?.setFeedback(type);
         _loadStatus();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -236,7 +264,8 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
   }
 
   Future<void> _updateStyle(String key, double value) async {
-    await _personalityService.updateStyle(
+    if (_personalityService == null) return;
+    await _personalityService!.updateStyle(
       formality: key == 'formality' ? value : null,
       humor: key == 'humor' ? value : null,
       verbosity: key == 'verbosity' ? value : null,

@@ -129,7 +129,7 @@ class WearableService {
 
   Future<List<WearableDevice>> fetchDevices() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/api/wearables'));
+      final response = await http.get(Uri.parse('$baseUrl/api/v1/wearables'));
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         _devices = data.map((d) => WearableDevice.fromJson(d)).toList();
@@ -151,7 +151,7 @@ class WearableService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/api/wearables'),
+        Uri.parse('$baseUrl/api/v1/wearables'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'name': name,
@@ -171,7 +171,7 @@ class WearableService {
 
   Future<void> removeDevice(String deviceId) async {
     try {
-      await http.delete(Uri.parse('$baseUrl/api/wearables/$deviceId'));
+      await http.delete(Uri.parse('$baseUrl/api/v1/wearables/$deviceId'));
       _devices.removeWhere((d) => d.id == deviceId);
       _deviceController.add(WearableDevice(id: '', name: '', type: '', platform: ''));
     } catch (e) {
@@ -187,7 +187,7 @@ class WearableService {
   }) async {
     try {
       await http.post(
-        Uri.parse('$baseUrl/api/wearables/$deviceId/health'),
+        Uri.parse('$baseUrl/api/v1/wearables/$deviceId/health'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'metric': metric,
@@ -211,7 +211,7 @@ class WearableService {
   Future<HealthSummary?> getHealthSummary(String deviceId) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/api/wearables/$deviceId/health'),
+        Uri.parse('$baseUrl/api/v1/wearables/$deviceId/health'),
       );
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -229,7 +229,7 @@ class WearableService {
     int limit = 50,
   }) async {
     try {
-      var url = '$baseUrl/api/wearables/$deviceId/health/history?limit=$limit';
+      var url = '$baseUrl/api/v1/wearables/$deviceId/health/history?limit=$limit';
       if (metric != null) url += '&metric=$metric';
 
       final response = await http.get(Uri.parse(url));

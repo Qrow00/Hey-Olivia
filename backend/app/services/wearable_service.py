@@ -3,14 +3,9 @@ from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime, timezone
 
-
-@dataclass
-class HealthMetric:
-    device_id: str
-    metric: str
-    value: float
-    unit: str
-    timestamp: float
+from sqlalchemy import select, func, delete
+from app.models.database import async_session
+from app.models.models import WearableDeviceDB, HealthMetricDB
 
 
 @dataclass
@@ -39,49 +34,122 @@ class HealthSummary:
 
 class WearableService:
     def __init__(self):
-        self.devices: dict[str, WearableDevice] = {}
-        self.health_history: dict[str, list[HealthMetric]] = {}
         self.subscribers: dict[str, list[str]] = {}
         self._health_cache: dict[str, HealthSummary] = {}
 
-    async def register_device(self, device: WearableDevice) -> dict:
-        self.devices[device.id] = device
-        self.health_history[device.id] = []
-        self._health_cache[device.id] = HealthSummary()
+    async def load_from_db(self):
+        async with async_session() as session:
+            result = await session.execute(select(WearableDeviceDB))
+            devices = result.scalars().all()
+            for d in devices:
+                self._health_cache[d.id] = HealthSummary()
+                metrics_result = await session.execute(
+                    select(HealthMetricDB)
+                    .where(HealthMetricDB.device_id == d.id)
+                    .order_by(HealthMetricDB.timestamp.desc())
+                    .limit(20)
+                )
+                for m in reversed(metrics_result.scalars().all()):
+                    self._update_cache(d.id, m.metric, m.value, m.unit)
+
+    async def register_device(self, device: WearableDevice, user_id: str = "default") -> dict:
+        async with async_session() as session:
+            existing = await session.get(WearableDeviceDB, device.id)
+            if existing:
+                existing.name = device.name
+                existing.type = device.type
+                existing.platform = device.platform
+                existing.is_online = device.is_online
+                existing.battery = device.battery
+                existing.firmware_version = device.firmware_version
+                existing.last_sync = (
+                    datetime.fromtimestamp(device.last_sync, tz=timezone.utc)
+                    if device.last_sync else None
+                )
+            else:
+                session.add(WearableDeviceDB(
+                    id=device.id,
+                    user_id=user_id,
+                    name=device.name,
+                    type=device.type,
+                    platform=device.platform,
+                    is_online=device.is_online,
+                    battery=device.battery,
+                    firmware_version=device.firmware_version,
+                    last_sync=(
+                        datetime.fromtimestamp(device.last_sync, tz=timezone.utc)
+                        if device.last_sync else None
+                    ),
+                ))
+            await session.commit()
+
+        self._health_cache.setdefault(device.id, HealthSummary())
         return {"status": "registered", "device_id": device.id}
 
     async def unregister_device(self, device_id: str) -> dict:
-        self.devices.pop(device_id, None)
-        self.health_history.pop(device_id, None)
+        async with async_session() as session:
+            await session.execute(
+                delete(HealthMetricDB).where(HealthMetricDB.device_id == device_id)
+            )
+            await session.execute(
+                delete(WearableDeviceDB).where(WearableDeviceDB.id == device_id)
+            )
+            await session.commit()
         self._health_cache.pop(device_id, None)
         return {"status": "unregistered", "device_id": device_id}
 
-    def record_metric(self, device_id: str, metric: str, value: float, unit: str = ""):
-        health = HealthMetric(
-            device_id=device_id,
-            metric=metric,
-            value=value,
-            unit=unit,
-            timestamp=time.time(),
-        )
+    async def record_metric(self, device_id: str, metric: str, value: float, unit: str = ""):
+        async with async_session() as session:
+            session.add(HealthMetricDB(
+                device_id=device_id,
+                metric=metric,
+                value=value,
+                unit=unit,
+            ))
 
-        if device_id not in self.health_history:
-            self.health_history[device_id] = []
-        self.health_history[device_id].append(health)
+            stmt = (
+                select(HealthMetricDB)
+                .where(HealthMetricDB.device_id == device_id)
+                .order_by(HealthMetricDB.timestamp.desc())
+                .offset(1000)
+            )
+            overflow = (await session.execute(stmt)).scalars().all()
+            for old in overflow:
+                await session.delete(old)
 
-        if len(self.health_history[device_id]) > 1000:
-            self.health_history[device_id] = self.health_history[device_id][-500:]
+            device_db = await session.get(WearableDeviceDB, device_id)
+            if device_db:
+                device_db.last_sync = datetime.now(timezone.utc)
+                device_db.is_online = True
+
+            await session.commit()
 
         self._update_cache(device_id, metric, value, unit)
 
-        if device_id in self.devices:
-            self.devices[device_id].last_sync = time.time()
-            self.devices[device_id].is_online = True
+    async def record_metrics_batch(self, device_id: str, metrics: list[dict]):
+        now = datetime.now(timezone.utc)
+        async with async_session() as session:
+            for m in metrics:
+                session.add(HealthMetricDB(
+                    device_id=device_id,
+                    metric=m["metric"],
+                    value=m["value"],
+                    unit=m.get("unit", ""),
+                ))
+            device_db = await session.get(WearableDeviceDB, device_id)
+            if device_db:
+                device_db.last_sync = now
+                device_db.is_online = True
+            await session.commit()
+
+        for m in metrics:
+            self._update_cache(device_id, m["metric"], m["value"], m.get("unit", ""))
 
     def _update_cache(self, device_id: str, metric: str, value: float, unit: str):
         cache = self._health_cache.get(device_id)
         if not cache:
-            return
+            cache = HealthSummary()
+            self._health_cache[device_id] = cache
 
         metric_data = {
             "current": value,
@@ -89,25 +157,11 @@ class WearableService:
             "timestamp": time.time(),
         }
 
-        history = [
-            m.value for m in self.health_history.get(device_id, [])
-            if m.metric == metric
-       ][-20:]
-
-        if history:
-            metric_data["avg"] = sum(history) / len(history)
-            metric_data["min"] = min(history)
-            metric_data["max"] = max(history)
-
         if metric == "heart_rate":
             cache.heart_rate = metric_data
         elif metric == "spo2":
             cache.spo2 = metric_data
         elif metric == "steps":
-            metric_data["today_total"] = sum(
-                m.value for m in self.health_history.get(device_id, [])
-                if m.metric == "steps" and m.timestamp > self._get_today_start()
-            )
             cache.steps = metric_data
         elif metric == "sleep":
             cache.sleep = metric_data
@@ -120,16 +174,10 @@ class WearableService:
         elif metric == "body_temperature":
             cache.body_temperature = metric_data
 
-    def _get_today_start(self) -> float:
-        now = datetime.now(timezone.utc)
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        return today_start.timestamp()
-
     def get_health_summary(self, device_id: str) -> Optional[dict]:
         cache = self._health_cache.get(device_id)
         if not cache:
             return None
-
         return {
             "heart_rate": cache.heart_rate,
             "spo2": cache.spo2,
@@ -141,28 +189,32 @@ class WearableService:
             "body_temperature": cache.body_temperature,
         }
 
-    def get_health_history(self, device_id: str, metric: str = None, limit: int = 50) -> list[dict]:
-        history = self.health_history.get(device_id, [])
+    async def get_health_history(self, device_id: str, metric: str = None, limit: int = 50) -> list[dict]:
+        async with async_session() as session:
+            q = (
+                select(HealthMetricDB)
+                .where(HealthMetricDB.device_id == device_id)
+            )
+            if metric:
+                q = q.where(HealthMetricDB.metric == metric)
+            q = q.order_by(HealthMetricDB.timestamp.desc()).limit(limit)
+            result = await session.execute(q)
+            return [
+                {
+                    "metric": m.metric,
+                    "value": m.value,
+                    "unit": m.unit,
+                    "timestamp": m.timestamp.replace(tzinfo=timezone.utc).timestamp(),
+                }
+                for m in reversed(result.scalars().all())
+            ]
 
-        if metric:
-            history = [m for m in history if m.metric == metric]
-
-        return [
-            {
-                "metric": m.metric,
-                "value": m.value,
-                "unit": m.unit,
-                "timestamp": m.timestamp,
-            }
-            for m in history[-limit:]
-        ]
-
-    def get_device(self, device_id: str) -> Optional[WearableDevice]:
-        return self.devices.get(device_id)
-
-    def get_all_devices(self) -> list[dict]:
-        return [
-            {
+    async def get_device(self, device_id: str) -> Optional[dict]:
+        async with async_session() as session:
+            d = await session.get(WearableDeviceDB, device_id)
+            if not d:
+                return None
+            return {
                 "id": d.id,
                 "name": d.name,
                 "type": d.type,
@@ -170,11 +222,31 @@ class WearableService:
                 "is_online": d.is_online,
                 "battery": d.battery,
                 "firmware_version": d.firmware_version,
-                "last_sync": d.last_sync,
+                "last_sync": d.last_sync.timestamp() if d.last_sync else 0,
                 "health_summary": self.get_health_summary(d.id),
             }
-            for d in self.devices.values()
-        ]
+
+    async def get_all_devices(self, user_id: str = None) -> list[dict]:
+        async with async_session() as session:
+            q = select(WearableDeviceDB)
+            if user_id:
+                q = q.where(WearableDeviceDB.user_id == user_id)
+            result = await session.execute(q)
+            devices = result.scalars().all()
+            return [
+                {
+                    "id": d.id,
+                    "name": d.name,
+                    "type": d.type,
+                    "platform": d.platform,
+                    "is_online": d.is_online,
+                    "battery": d.battery,
+                    "firmware_version": d.firmware_version,
+                    "last_sync": d.last_sync.timestamp() if d.last_sync else 0,
+                    "health_summary": self.get_health_summary(d.id),
+                }
+                for d in devices
+            ]
 
     def subscribe(self, client_id: str, metrics: list[str]):
         self.subscribers[client_id] = metrics

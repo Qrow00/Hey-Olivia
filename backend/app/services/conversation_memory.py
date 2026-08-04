@@ -3,31 +3,36 @@ import os
 import time
 from datetime import datetime
 
-
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
-MEMORY_FILE = os.path.join(DATA_DIR, "conversation_memory.json")
 MAX_HISTORY = 50
 MAX_SESSIONS = 100
 
 
-class ConversationMemory:
-    def __init__(self):
+def _file_for(profile_id: str) -> str:
+    return os.path.join(DATA_DIR, f"conversation_memory_{profile_id}.json")
+
+
+class ProfileMemory:
+    def __init__(self, profile_id: str):
+        self._profile_id = profile_id
         self._sessions: list[dict] = []
         self._current_session: list[dict] = []
         self._session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self._load()
 
     def _load(self):
+        path = _file_for(self._profile_id)
         try:
-            if os.path.exists(MEMORY_FILE):
-                with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 self._sessions = data.get("sessions", [])
         except Exception as e:
-            print(f"[MEMORY LOAD ERROR] {e}")
+            print(f"[MEMORY LOAD {self._profile_id}] {e}")
             self._sessions = []
 
     def _save(self):
+        path = _file_for(self._profile_id)
         try:
             os.makedirs(DATA_DIR, exist_ok=True)
             if self._current_session:
@@ -38,14 +43,12 @@ class ConversationMemory:
                 })
                 self._current_session = []
                 self._session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-
             if len(self._sessions) > MAX_SESSIONS:
                 self._sessions = self._sessions[-MAX_SESSIONS:]
-
-            with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump({"sessions": self._sessions}, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"[MEMORY SAVE ERROR] {e}")
+            print(f"[MEMORY SAVE {self._profile_id}] {e}")
 
     def add_message(self, role: str, content: str):
         self._current_session.append({"role": role, "content": content})
@@ -92,4 +95,18 @@ class ConversationMemory:
         self._save()
 
 
-conversation_memory = ConversationMemory()
+class ConversationMemoryManager:
+    def __init__(self):
+        self._profiles: dict[str, ProfileMemory] = {}
+
+    def for_profile(self, profile_id: str) -> ProfileMemory:
+        if profile_id not in self._profiles:
+            self._profiles[profile_id] = ProfileMemory(profile_id)
+        return self._profiles[profile_id]
+
+    def save_on_exit(self):
+        for p in self._profiles.values():
+            p.save_on_exit()
+
+
+conversation_memory = ConversationMemoryManager()

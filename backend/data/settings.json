@@ -1,0 +1,7 @@
+{
+  "default": {
+    "voice": {
+      "llm_model": "llama3.2"
+    }
+  }
+}
