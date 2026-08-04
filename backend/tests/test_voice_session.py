@@ -228,3 +228,207 @@ async def test_track_vad_offset_triggers_finalize():
     for _ in range(OFFSET_FRAMES):
         await session._track_vad(0.1, bytes(VAD_CHUNK_BYTES))
     assert calls == [True]
+
+
+def finalize_session(send, **kw):
+    async def _speech_to_text(audio):
+        return {"text": "turn on the lights", "confidence": 0.9}
+
+    async def _text_to_speech(text):
+        return b"MP3DATA"
+
+    async def _chat_completion(msg, sp):
+        return {"response": "Done.", "model": "llama3.2"}
+
+    async def _execute_command(text):
+        return {"result": {"status": "success", "message": "Lights on"}}
+
+    defaults = dict(
+        speech_to_text=_speech_to_text,
+        text_to_speech=_text_to_speech,
+        chat_completion=_chat_completion,
+        parse_command=lambda text: {"matched": True, "handler": "lights", "category": "smart_home"},
+        execute_command=_execute_command,
+        get_profile=lambda pid: FakeProfile(),
+    )
+    defaults.update(kw)
+    return VoiceSession(send, **defaults)
+
+
+async def run_finalize(session, seconds=3.0):
+    session.phase = SessionPhase.COMMAND
+    session._command_buffer = bytearray(b"\x00\x00" * int(seconds * 16000))
+    await session._finalize()
+
+
+@pytest.mark.anyio
+async def test_vad_endpointing_finalizes_command():
+    send = SendCollector()
+    session = finalize_session(send)
+    session._wake_model = FakeWakeModel(score=0.0)
+    session._vad = FakeVad([0.9] * 60 + [0.1] * 40)
+    session.phase = SessionPhase.COMMAND
+    await session._process_audio(SILENT_FRAME * 50)
+    responses = [m for m in send.messages if m["type"] == "voice_response"]
+    assert len(responses) == 1
+    assert session.phase == SessionPhase.SPEAKING
+    phases = [m["phase"] for m in send.messages if m["type"] == "voice_phase"]
+    assert "thinking" in phases and "speaking" in phases
+
+
+@pytest.mark.anyio
+async def test_vad_short_command_is_discarded():
+    send = SendCollector()
+    session = finalize_session(send)
+    session._wake_model = FakeWakeModel(score=0.0)
+    session._vad = FakeVad([0.9] * 5 + [0.1] * 40)
+    session.phase = SessionPhase.COMMAND
+    await session._process_audio(SILENT_FRAME * 25)
+    assert not any(m["type"] == "voice_response" for m in send.messages)
+    assert session.phase == SessionPhase.LISTENING
+    last_phase = [m["phase"] for m in send.messages if m["type"] == "voice_phase"][-1]
+    assert last_phase == "listening"
+
+
+@pytest.mark.anyio
+async def test_vad_max_duration_force_finalize():
+    send = SendCollector()
+    session = finalize_session(send)
+    session._wake_model = FakeWakeModel(score=0.0)
+    session._vad = FakeVad([0.9] * 1000)
+    session.phase = SessionPhase.COMMAND
+    await session._process_audio(SILENT_FRAME * 205)
+    assert any(m["type"] == "voice_response" for m in send.messages)
+    assert session.phase == SessionPhase.SPEAKING
+
+
+@pytest.mark.anyio
+async def test_finalize_matched_command():
+    send = SendCollector()
+    session = finalize_session(send)
+    await run_finalize(session)
+    resp = [m for m in send.messages if m["type"] == "voice_response"][-1]
+    assert resp["response"] == "Done."
+    assert resp["model"] == "llama3.2"
+    assert resp["audio"] is not None
+    assert session.phase == SessionPhase.SPEAKING
+
+
+@pytest.mark.anyio
+async def test_finalize_llm_only_when_no_command_match():
+    send = SendCollector()
+    session = finalize_session(send, parse_command=lambda text: {"matched": False})
+    await run_finalize(session)
+    resp = [m for m in send.messages if m["type"] == "voice_response"][-1]
+    assert resp["response"] == "Done."
+    assert resp["transcription"] == "turn on the lights"
+
+
+@pytest.mark.anyio
+async def test_finalize_goodbye():
+    send = SendCollector()
+    session = finalize_session(
+        send,
+        parse_command=lambda text: {"matched": True, "handler": "goodbye"},
+    )
+    await run_finalize(session)
+    resp = [m for m in send.messages if m["type"] == "voice_response"][-1]
+    assert resp["is_farewell"] is True
+    assert resp["exit_app"] is True
+    assert "Goodbye, Boss." in resp["response"]
+
+
+@pytest.mark.anyio
+async def test_finalize_empty_transcription_returns_to_listening():
+    send = SendCollector()
+
+    async def empty_stt(audio):
+        return {"text": "", "confidence": 0.0}
+
+    session = finalize_session(send, speech_to_text=empty_stt)
+    await run_finalize(session)
+    assert not any(m["type"] == "voice_response" for m in send.messages)
+    assert session.phase == SessionPhase.LISTENING
+
+
+@pytest.mark.anyio
+async def test_finalize_strip_wake_phrase_from_transcription():
+    send = SendCollector()
+
+    async def wake_stt(audio):
+        return {"text": "hey jarvis set alarm", "confidence": 0.9}
+
+    session = finalize_session(send, speech_to_text=wake_stt)
+    await run_finalize(session)
+    resp = [m for m in send.messages if m["type"] == "voice_response"][-1]
+    assert resp["transcription"] == "set alarm"
+
+
+@pytest.mark.anyio
+async def test_introduction_captures_name():
+    send = SendCollector()
+    profile = FakeProfile()
+
+    async def intro_stt(audio):
+        return {"text": "alice smith", "confidence": 0.9}
+
+    session = finalize_session(
+        send,
+        get_profile=lambda pid: profile,
+        is_introduction=lambda: True,
+        speech_to_text=intro_stt,
+    )
+    await run_finalize(session)
+    assert profile.preferred_name == "Alice Smith"
+    assert profile.introduced is True
+    assert profile.saved is True
+    resp = [m for m in send.messages if m["type"] == "voice_response"][-1]
+    assert resp["model"] == "introduction"
+    assert resp["is_introduction"] is True
+    assert "Alice Smith" in resp["response"]
+    assert session.phase == SessionPhase.SPEAKING
+
+
+@pytest.mark.anyio
+async def test_introduction_fallback_boss():
+    send = SendCollector()
+    profile = FakeProfile()
+
+    async def empty_stt(audio):
+        return {"text": "", "confidence": 0.0}
+
+    session = finalize_session(
+        send,
+        get_profile=lambda pid: profile,
+        is_introduction=lambda: True,
+        speech_to_text=empty_stt,
+    )
+    await run_finalize(session)
+    assert profile.preferred_name == "Boss"
+    assert profile.introduced is True
+
+
+@pytest.mark.anyio
+async def test_finalize_error_sends_voice_error():
+    send = SendCollector()
+    session = finalize_session(
+        send,
+        speech_to_text=lambda audio: (_ for _ in ()).throw(RuntimeError("stt failed")),
+    )
+    await run_finalize(session)
+    errors = [m for m in send.messages if m["type"] == "voice_error"]
+    assert errors and "stt failed" in errors[-1]["message"]
+    assert session.phase == SessionPhase.LISTENING
+
+
+@pytest.mark.anyio
+async def test_intro_complete_callback_invoked():
+    send = SendCollector()
+    calls = []
+    session = finalize_session(
+        send,
+        is_introduction=lambda: True,
+        on_intro_complete=lambda: calls.append(True),
+    )
+    await run_finalize(session)
+    assert calls == [True]

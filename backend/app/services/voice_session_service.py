@@ -297,7 +297,117 @@ class VoiceSession:
                 await self._finalize()
 
     async def _finalize(self):
-        pass  # Task 4
+        duration = len(self._command_buffer) / 2 / 16000
+        if duration < MIN_COMMAND_SECONDS:
+            self._reset_command_buffers()
+            self.phase = SessionPhase.LISTENING
+            await self._send({"type": "voice_phase", "phase": self.phase.value})
+            return
+        audio = bytes(self._command_buffer)
+        self._reset_command_buffers()
+        self.phase = SessionPhase.THINKING
+        await self._send({"type": "voice_phase", "phase": self.phase.value})
+        await self._send({"type": "avatar_state", "state": "thinking"})
+        try:
+            if self._is_introduction():
+                await self._finalize_introduction(audio)
+            else:
+                await self._finalize_command(audio)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            await self._emit_error(f"{type(e).__name__}: {e}")
+
+    async def _finalize_introduction(self, audio: bytes):
+        profile = self._get_profile(self._profile_id)
+        stt = await self._speech_to_text(audio)
+        text = stt.get("text", "").strip().strip(".").strip()
+        name = " ".join(w.capitalize() for w in text.split() if w.isalpha())
+        if name:
+            profile.preferred_name = name
+            response_text = f"Nice to meet you, {name}! How may I assist you today?"
+        else:
+            profile.preferred_name = "Boss"
+            response_text = "No problem! I will call you Boss. How may I assist you today?"
+        profile.introduced = True
+        profile._save()
+        self._on_intro_complete()
+        tts = await self._text_to_speech(response_text)
+        await self._send({"type": "avatar_state", "state": "speaking"})
+        await self._send({
+            "type": "voice_response",
+            "transcription": text,
+            "response": response_text,
+            "audio": base64.b64encode(tts).decode(),
+            "model": "introduction",
+            "is_introduction": True,
+        })
+        self.phase = SessionPhase.SPEAKING
+        await self._send({"type": "voice_phase", "phase": self.phase.value})
+
+    async def _finalize_command(self, audio: bytes):
+        stt = await self._speech_to_text(audio)
+        text = stt.get("text", "").strip()
+        command_text = strip_wake_phrase(text)
+        if not command_text:
+            self.phase = SessionPhase.LISTENING
+            await self._send({"type": "voice_phase", "phase": self.phase.value})
+            return
+        profile = self._get_profile(self._profile_id)
+        result = self._parse_command(command_text)
+        if result.get("matched"):
+            if result.get("handler") == "goodbye":
+                farewell_text = f"Goodbye, {profile.preferred_name}. It was a pleasure assisting you."
+                tts = await self._text_to_speech(farewell_text)
+                await self._send({"type": "avatar_state", "state": "speaking"})
+                await self._send({
+                    "type": "voice_response",
+                    "transcription": command_text,
+                    "response": farewell_text,
+                    "audio": base64.b64encode(tts).decode(),
+                    "model": "farewell",
+                    "is_farewell": True,
+                    "exit_app": True,
+                })
+                self.phase = SessionPhase.SPEAKING
+                await self._send({"type": "voice_phase", "phase": self.phase.value})
+                return
+            execution = await self._execute_command(command_text)
+            result_data = execution.get("result", {})
+            result_message = result_data.get("message", "Command executed.")
+            extra_info = ""
+            for k, v in result_data.items():
+                if k not in ("status", "message") and v:
+                    if isinstance(v, list):
+                        extra_info += f"\n{k}: {', '.join(str(i) for i in v[:10])}"
+                    elif isinstance(v, str) and len(v) > 5:
+                        extra_info += f"\n{k}: {v}"
+                    elif isinstance(v, dict):
+                        extra_info += f"\n{k}: {v}"
+            prompt = (
+                f'The user said: "{command_text}"\n'
+                f"Command result: {result_message}{extra_info}\n\n"
+                "Respond with a short natural sentence (1-2 lines) about what was done. Be helpful and conversational."
+            )
+        else:
+            prompt = command_text
+        llm = await self._chat_completion(
+            prompt,
+            self._build_system_prompt(command_text, self._profile_id),
+        )
+        response_text = llm["response"]
+        tts = await self._text_to_speech(response_text)
+        await self._send({"type": "avatar_state", "state": "speaking"})
+        await self._send({
+            "type": "voice_response",
+            "transcription": command_text,
+            "confidence": stt.get("confidence", 0.0),
+            "response": response_text,
+            "audio": base64.b64encode(tts).decode(),
+            "model": llm.get("model", "llama3.2"),
+        })
+        self.phase = SessionPhase.SPEAKING
+        await self._send({"type": "voice_phase", "phase": self.phase.value})
 
     async def _emit_error(self, message: str):
         self.phase = SessionPhase.LISTENING
