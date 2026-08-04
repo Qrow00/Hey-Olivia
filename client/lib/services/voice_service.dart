@@ -1,16 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
-import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'mic_recorder.dart';
 import 'websocket_service.dart';
 
-enum VadState { idle, listening, speaking, processing }
-
-enum VoicePhase { wakeWord, command }
+enum VoicePhase { idle, listening, command, thinking, speaking }
 
 class VoiceService {
   final WebSocketService _webSocketService;
@@ -26,41 +22,32 @@ class VoiceService {
   final _transcriptionController = StreamController<String>.broadcast();
   final _responseController = StreamController<String>.broadcast();
   final _exitController = StreamController<void>.broadcast();
-  final _vadStateController = StreamController<VadState>.broadcast();
+  final _phaseController = StreamController<VoicePhase>.broadcast();
   final _ttsDoneController = StreamController<void>.broadcast();
   String _currentState = 'idle';
 
-  VadState _vadState = VadState.idle;
-  VoicePhase _voicePhase = VoicePhase.wakeWord;
-  List<int> _audioBuffer = [];
-  int _silenceFrames = 0;
-  int _speechFrames = 0;
-  bool _isProcessing = false;
+  VoicePhase _phase = VoicePhase.idle;
+  bool _playbackInterrupted = false;
+  final List<int> _frameBuffer = [];
   bool _alwaysListening = false;
   bool _wakeWordMode = false;
-  bool _wakeWordCooldown = false;
   Process? _currentPlayer;
   MicRecorder? _micRecorder;
   StreamSubscription<List<int>>? _audioStreamSub;
 
   static const int _sampleRate = 16000;
-  static const int _bytesPerSample = 2;
-  static const int _frameSize = 960;
-  static const double _speechThreshold = 650.0;
-  static const int _speechStartFrames = 5;
-  static const int _silenceEndFrames = 25;
-  static const int _minSpeechFrames = 5;
-  static const int _maxBufferSeconds = 30;
+  static const int _frameBytes = 1280 * 2; // 80 ms of s16 mono @ 16kHz
+  static const int _framesPerMessage = 4;
 
   Stream<String> get avatarState => _avatarStateController.stream;
   Stream<String> get transcription => _transcriptionController.stream;
   Stream<String> get response => _responseController.stream;
   Stream<void> get exitApp => _exitController.stream;
-  Stream<VadState> get vadState => _vadStateController.stream;
   Stream<void> get ttsDone => _ttsDoneController.stream;
   bool get isListening => _alwaysListening;
   bool get isRecording => _alwaysListening;
-  VoicePhase get voicePhase => _voicePhase;
+  VoicePhase get voicePhase => _phase;
+  Stream<VoicePhase> get phase => _phaseController.stream;
 
   static String get _ffmpegPath {
     final ffmpegDir = '${Platform.environment['USERPROFILE']}\\ffmpeg';
@@ -114,15 +101,26 @@ class VoiceService {
       case 'avatar_state':
         _currentState = message['state'];
         _safeAdd(_avatarStateController, message['state']);
-        if (message['state'] == 'idle' || message['state'] == 'error') {
-          _isProcessing = false;
-          _wakeWordCooldown = false;
-          if (_alwaysListening) {
-            _voicePhase = VoicePhase.wakeWord;
-            _vadState = VadState.listening;
-            _safeAdd(_vadStateController, _vadState);
-          }
+        break;
+      case 'voice_mode_ready':
+        if (message['status'] == 'error') {
+          print('[Voice] Voice mode error: ${message['message']}');
+          _safeAdd(_avatarStateController, 'error');
+          _setPhase(VoicePhase.idle);
+          stopListening();
+        } else {
+          print('[Voice] Voice mode ready');
+          _setPhase(VoicePhase.listening);
         }
+        break;
+      case 'voice_phase':
+        _setPhase(_parsePhase(message['phase']));
+        break;
+      case 'wake_word_detected':
+        print('[Voice] Wake word detected');
+        if (_currentPlayer != null || Platform.isAndroid) _stopCurrentPlayer();
+        _setPhase(VoicePhase.command);
+        _safeAdd(_avatarStateController, 'listening');
         break;
       case 'voice_response':
         _safeAdd(_transcriptionController, message['transcription'] ?? '');
@@ -136,44 +134,38 @@ class VoiceService {
       case 'text_response':
         _safeAdd(_responseController, message['response'] ?? '');
         break;
+      case 'voice_error':
+        print('[Voice] Voice error: ${message['message']}');
+        _safeAdd(_avatarStateController, 'error');
+        _setPhase(VoicePhase.listening);
+        break;
       case 'error':
         _safeAdd(_avatarStateController, 'error');
-        _isProcessing = false;
-        break;
-      case 'wake_word_detected':
-        print('[Voice] Wake word detected by server, entering command phase');
-        _voicePhase = VoicePhase.command;
-        _isProcessing = false;
-        _vadState = VadState.listening;
-        _safeAdd(_vadStateController, _vadState);
-        _safeAdd(_avatarStateController, 'listening');
-        break;
-      case 'wake_word_miss':
-        _isProcessing = false;
-        _vadState = VadState.listening;
-        _safeAdd(_vadStateController, _vadState);
-        _wakeWordCooldown = true;
-        print('[Voice] Wake word miss, cooldown 2s');
-        Future.delayed(Duration(seconds: 2), () {
-          _wakeWordCooldown = false;
-          print('[Voice] Cooldown ended, ready for next attempt');
-        });
-        break;
-      case 'wake_word_error':
-        print('[Voice] Wake word error: ${message['message']}');
-        _safeAdd(_avatarStateController, 'error');
-        _isProcessing = false;
         break;
     }
   }
 
+  VoicePhase _parsePhase(dynamic value) {
+    switch (value) {
+      case 'listening': return VoicePhase.listening;
+      case 'command': return VoicePhase.command;
+      case 'thinking': return VoicePhase.thinking;
+      case 'speaking': return VoicePhase.speaking;
+      default: return VoicePhase.idle;
+    }
+  }
+
+  void _setPhase(VoicePhase value) {
+    _phase = value;
+    _safeAdd(_phaseController, value);
+  }
+
   void _stopCurrentPlayer() {
-    final player = _currentPlayer;
-    if (player != null && player.pid > 0) {
-      print('[Voice] Stopping previous audio');
-      try {
-        player.kill();
-      } catch (_) {}
+    if (_currentPlayer != null || Platform.isAndroid) {
+      _playbackInterrupted = true;
+    }
+    if (_currentPlayer != null) {
+      try { _currentPlayer!.kill(); } catch (_) {}
       _currentPlayer = null;
     }
     if (Platform.isAndroid) {
@@ -187,6 +179,7 @@ class VoiceService {
     if (audioBase64 == null || audioBase64.isEmpty || _isDisposed) return;
 
     _stopCurrentPlayer();
+    _playbackInterrupted = false;
 
     try {
       final audioBytes = base64Decode(audioBase64);
@@ -195,11 +188,6 @@ class VoiceService {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.mp3');
       await file.writeAsBytes(audioBytes);
-
-      if (isListening && !_isDisposed) {
-        await stopListening();
-        print('[Voice] Paused mic during TTS playback');
-      }
 
       if (Platform.isWindows) {
         final safePath = file.path.replaceAll("'", "''");
@@ -235,15 +223,17 @@ class VoiceService {
         print('[Voice] TTS playback skipped (platform: ${Platform.operatingSystem})');
       }
 
+      if (_playbackInterrupted) {
+        _playbackInterrupted = false;
+        print('[Voice] Playback interrupted by barge-in, skipping tts_done');
+        return;
+      }
+
       _currentPlayer = null;
       print('[Voice] TTS playback done');
       _safeAdd(_ttsDoneController, null);
       if (!_isDisposed && !_exitPending) {
-        await Future.delayed(Duration(milliseconds: 300));
-        if (!_isDisposed && !_exitPending) {
-          startListening();
-          print('[Voice] Resumed mic after TTS');
-        }
+        _webSocketService.send({'type': 'tts_done'});
       }
 
       try {
@@ -370,12 +360,9 @@ class VoiceService {
 
       _recordingProcess!.exitCode.then((code) {
         print('[Voice] ffmpeg exited with code $code');
-        _isProcessing = false;
       });
 
       _alwaysListening = true;
-      _vadState = VadState.listening;
-      _safeAdd(_vadStateController, _vadState);
       _safeAdd(_avatarStateController, 'listening');
       print('[Voice] Listening started');
 
@@ -392,10 +379,14 @@ class VoiceService {
   Future<bool> startWakeWordMode() async {
     if (_isDisposed) return false;
     _wakeWordMode = true;
-    _voicePhase = VoicePhase.wakeWord;
+    _setPhase(VoicePhase.idle);
     final started = await startListening();
-    if (!started) _wakeWordMode = false;
-    return started;
+    if (!started) {
+      _wakeWordMode = false;
+      return false;
+    }
+    _webSocketService.send({'type': 'voice_mode_start', 'sample_rate': _sampleRate});
+    return true;
   }
 
   Future<bool> _startAndroidListening() async {
@@ -411,8 +402,6 @@ class VoiceService {
         return false;
       }
       _alwaysListening = true;
-      _vadState = VadState.listening;
-      _safeAdd(_vadStateController, _vadState);
       _safeAdd(_avatarStateController, 'listening');
       print('[Voice] Android listening started');
       return true;
@@ -430,192 +419,57 @@ class VoiceService {
   }
 
   void _processAudioStream(Stream<List<int>> audioStream) {
-    List<int> remaining = [];
-
     _audioStreamSub?.cancel();
     _audioStreamSub = audioStream.listen(
       (data) {
-        final combined = [...remaining, ...data];
-        remaining = [];
-
-        int offset = 0;
-        while (offset + _frameSize * _bytesPerSample <= combined.length) {
-          final frame = combined.sublist(offset, offset + _frameSize * _bytesPerSample);
-          offset += _frameSize * _bytesPerSample;
-          _processFrame(frame);
-        }
-
-        if (offset < combined.length) {
-          remaining = combined.sublist(offset);
+        _frameBuffer.addAll(data);
+        while (_frameBuffer.length >= _framesPerMessage * _frameBytes) {
+          final chunk = _frameBuffer.sublist(0, _framesPerMessage * _frameBytes);
+          _frameBuffer.removeRange(0, _framesPerMessage * _frameBytes);
+          _sendAudioFrame(chunk);
         }
       },
-      onDone: () {
-        print('[Voice] Audio stream ended');
-      },
-      onError: (e) {
-        print('[Voice] Audio stream error: $e');
-      },
+      onDone: () => print('[Voice] Audio stream ended'),
+      onError: (e) => print('[Voice] Audio stream error: $e'),
     );
   }
 
-  void _processFrame(List<int> frame) {
-    if (_isProcessing || _isDisposed) return;
-
-    double rms = 0;
-    for (int i = 0; i < frame.length; i += 2) {
-      if (i + 1 < frame.length) {
-        final sample = (frame[i] | (frame[i + 1] << 8)).toSigned(16);
-        rms += sample * sample;
-      }
-    }
-    rms = sqrt(rms / (_frameSize));
-
-    switch (_vadState) {
-      case VadState.idle:
-      case VadState.listening:
-        if (rms > _speechThreshold) {
-          _speechFrames++;
-          _silenceFrames = 0;
-          if (_speechFrames >= _speechStartFrames) {
-            _vadState = VadState.speaking;
-            _safeAdd(_vadStateController, _vadState);
-            _safeAdd(_avatarStateController, 'listening');
-            _audioBuffer.addAll(frame);
-            _speechFrames = 0;
-            print('[Voice] Speech detected');
-          }
-        } else {
-          _speechFrames = 0;
-        }
-        break;
-
-      case VadState.speaking:
-        _audioBuffer.addAll(frame);
-
-        if (rms < _speechThreshold) {
-          _silenceFrames++;
-          _speechFrames = 0;
-        } else {
-          _silenceFrames = 0;
-          _speechFrames++;
-        }
-
-        final maxFrames = _maxBufferSeconds * _sampleRate / _frameSize;
-        if (_audioBuffer.length > maxFrames * _frameSize * _bytesPerSample) {
-          print('[Voice] Buffer max reached, sending');
-          _sendBufferedAudio();
-        } else if (_silenceFrames >= _silenceEndFrames && _speechFrames < _minSpeechFrames) {
-          print('[Voice] Silence detected, sending');
-          _sendBufferedAudio();
-        }
-        break;
-
-      case VadState.processing:
-        break;
-    }
-  }
-
-  void _sendBufferedAudio() {
-    if (_audioBuffer.isEmpty || _isProcessing || _wakeWordCooldown) {
-      _audioBuffer.clear();
-      _vadState = VadState.listening;
-      _safeAdd(_vadStateController, _vadState);
-      return;
-    }
-
-    final totalSamples = _audioBuffer.length ~/ _bytesPerSample;
-    final dataSize = _audioBuffer.length;
-    final fileSize = 44 + dataSize;
-
-    final wav = ByteData(fileSize);
-    int offset = 0;
-
-    void writeString(String s) {
-      for (int i = 0; i < s.length; i++) {
-        offset++;
-        wav.setUint8(offset - 1, s.codeUnitAt(i));
-      }
-    }
-
-    writeString('RIFF');
-    wav.setUint32(offset, fileSize - 8, Endian.little); offset += 4;
-    writeString('WAVE');
-    writeString('fmt ');
-    wav.setUint32(offset, 16, Endian.little); offset += 4;
-    wav.setUint16(offset, 1, Endian.little); offset += 2;
-    wav.setUint16(offset, 1, Endian.little); offset += 2;
-    wav.setUint32(offset, _sampleRate, Endian.little); offset += 4;
-    wav.setUint32(offset, _sampleRate * _bytesPerSample, Endian.little); offset += 4;
-    wav.setUint16(offset, _bytesPerSample, Endian.little); offset += 2;
-    wav.setUint16(offset, 16, Endian.little); offset += 2;
-    writeString('data');
-    wav.setUint32(offset, dataSize, Endian.little); offset += 4;
-
-    for (final byte in _audioBuffer) {
-      wav.setUint8(offset, byte);
-      offset++;
-    }
-
-    _audioBuffer.clear();
-    _silenceFrames = 0;
-    _speechFrames = 0;
-    _isProcessing = true;
-    _vadState = VadState.processing;
-    _safeAdd(_vadStateController, _vadState);
-
-    final wavBytes = wav.buffer.asUint8List();
-    print('[Voice] Sending ${wavBytes.length} bytes (${totalSamples / _sampleRate}s) phase=$_voicePhase');
-
+  void _sendAudioFrame(List<int> pcm) {
     _webSocketService.send({
-      'type': 'voice_chunk',
-      'audio': base64Encode(wavBytes),
-      'wake_word_check': _voicePhase == VoicePhase.wakeWord,
+      'type': 'audio_frame',
+      'audio': base64Encode(Uint8List.fromList(pcm)),
     });
   }
 
   Future<void> stopListening() async {
-    if (!_alwaysListening || _isDisposed) return;
-
+    if (!_alwaysListening && !_wakeWordMode) return;
     _alwaysListening = false;
-    _voicePhase = VoicePhase.wakeWord;
-    _vadState = VadState.idle;
-    _safeAdd(_vadStateController, _vadState);
-
-    try {
-      await _audioStreamSub?.cancel();
-      _audioStreamSub = null;
-
-      if (Platform.isAndroid) {
-        await _micRecorder?.stop();
-      } else if (_recordingProcess != null) {
-        try {
-          _recordingProcess!.stdin.write('q');
-          await _recordingProcess!.stdin.flush();
-        } catch (_) {}
-
-        await _stderrSub?.cancel();
-        await _stdoutSub?.cancel();
-
-        final exitCode = await _recordingProcess!.exitCode.timeout(
-          Duration(seconds: 3),
-          onTimeout: () {
-            _recordingProcess?.kill();
-            return -1;
-          },
-        );
-        print('[Voice] ffmpeg exit: $exitCode');
-        _recordingProcess = null;
-      }
-
-      _audioBuffer.clear();
-      _silenceFrames = 0;
-      _speechFrames = 0;
-
-      _safeAdd(_avatarStateController, 'idle');
-    } catch (e) {
-      print('[Voice] Stop listening error: $e');
-      _safeAdd(_avatarStateController, 'idle');
+    _wakeWordMode = false;
+    _setPhase(VoicePhase.idle);
+    try { _webSocketService.send({'type': 'voice_mode_stop'}); } catch (_) {}
+    try { await _audioStreamSub?.cancel(); } catch (_) {}
+    _audioStreamSub = null;
+    _frameBuffer.clear();
+    if (Platform.isAndroid) {
+      await _micRecorder?.stop();
+    } else if (_recordingProcess != null) {
+      try {
+        _recordingProcess!.stdin.write('q');
+        await _recordingProcess!.stdin.flush();
+      } catch (_) {}
+      await _stderrSub?.cancel();
+      await _stdoutSub?.cancel();
+      final exitCode = await _recordingProcess!.exitCode.timeout(
+        Duration(seconds: 3),
+        onTimeout: () {
+          _recordingProcess?.kill();
+          return -1;
+        },
+      );
+      print('[Voice] ffmpeg exit: $exitCode');
+      _recordingProcess = null;
     }
+    _safeAdd(_avatarStateController, 'idle');
   }
 
   void sendTextMessage(String text, {String? systemPrompt}) {
@@ -639,6 +493,6 @@ class VoiceService {
     if (!_transcriptionController.isClosed) _transcriptionController.close();
     if (!_responseController.isClosed) _responseController.close();
     if (!_exitController.isClosed) _exitController.close();
-    if (!_vadStateController.isClosed) _vadStateController.close();
+    if (!_phaseController.isClosed) _phaseController.close();
   }
 }
