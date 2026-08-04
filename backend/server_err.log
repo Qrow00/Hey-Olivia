@@ -1,4 +1,6 @@
-INFO:     Started server process [11980]
+INFO:     Will watch for changes in these directories: ['D:\\project\\Jarvis project\\Hey-Olivia\\backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [14788] using WatchFiles
+INFO:     Started server process [14196]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
