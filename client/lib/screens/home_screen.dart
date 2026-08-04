@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../widgets/avatar_widget.dart';
+import '../services/server_config.dart';
+import '../services/settings_service.dart';
 import '../services/websocket_service.dart';
 import '../services/voice_service.dart';
 import '../utils/responsive.dart';
@@ -24,6 +26,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late VoiceService _voiceService;
+  SettingsService? _settingsService;
 
   String _avatarState = 'idle';
   String _lastMessage = 'Ready to assist you.';
@@ -32,7 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _wordPulse = false;
   bool _isListening = false;
   bool _wakeWordMode = false;
-  VoicePhase _voicePhase = VoicePhase.wakeWord;
+  VoicePhase _voicePhase = VoicePhase.idle;
   final TextEditingController _chatController = TextEditingController();
   final ScrollController _chatScrollController = ScrollController();
   List<_ChatMessage> _chatHistory = [];
@@ -41,7 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _avatarSubscription;
   StreamSubscription? _transcriptionSubscription;
   StreamSubscription? _responseSubscription;
-  StreamSubscription? _vadSubscription;
+  StreamSubscription? _phaseSubscription;
   StreamSubscription? _messageSubscription;
   StreamSubscription? _ttsDoneSubscription;
   Timer? _wordPulseTimer;
@@ -52,8 +55,20 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _voiceService = VoiceService(widget.webSocketService);
+    _loadSettings();
     _setupListeners();
     _setupConnectionWatch();
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final config = await ServerConfig.load();
+      if (config == null || !mounted) return;
+      final settings = SettingsService(config);
+      await settings.fetch();
+      if (!mounted) return;
+      setState(() => _settingsService = settings);
+    } catch (_) {}
   }
 
   bool _greetingReceived = false;
@@ -86,13 +101,14 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!_greetingReceived && mounted) {
         _greetingReceived = true;
         Future.delayed(Duration(milliseconds: 500), () async {
-          if (mounted) {
-            final started = await _voiceService.startWakeWordMode();
-            if (mounted) setState(() {
-              _wakeWordMode = started;
-              _voicePhase = VoicePhase.wakeWord;
-            });
-          }
+          if (!mounted) return;
+          final enabled = _settingsService?.wakeWordEnabled ?? true;
+          if (!enabled) return;
+          final started = await _voiceService.startWakeWordMode();
+          if (mounted) setState(() {
+            _wakeWordMode = started;
+            _voicePhase = VoicePhase.idle;
+          });
         });
       }
     });
@@ -107,9 +123,12 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    _vadSubscription = _voiceService.vadState.listen((state) {
+    _phaseSubscription = _voiceService.phase.listen((phase) {
       if (mounted && _wakeWordMode) {
-        setState(() => _isListening = state != VadState.idle);
+        setState(() {
+          _isListening = phase != VoicePhase.idle;
+          _voicePhase = phase;
+        });
       }
     });
   }
@@ -175,7 +194,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _avatarSubscription?.cancel();
     _transcriptionSubscription?.cancel();
     _responseSubscription?.cancel();
-    _vadSubscription?.cancel();
+    _phaseSubscription?.cancel();
     _messageSubscription?.cancel();
     _ttsDoneSubscription?.cancel();
     _voiceService.dispose();
@@ -318,25 +337,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBottomPanel() {
-    String status;
-    switch (_avatarState) {
-      case 'listening':
-        status = _voicePhase == VoicePhase.command ? 'Listening for command...' : 'Listening...';
-      case 'thinking':
-        status = 'Processing...';
-      case 'speaking':
-        status = 'Speaking...';
-      case 'error':
-        status = 'Something went wrong. Try again.';
-      default:
-        if (_wakeWordMode) {
-          status = _voicePhase == VoicePhase.command
-              ? 'Command received. Speak...'
-              : 'Say "Hey Jarvis" to activate';
-        } else {
-          status = 'Type a message below to chat';
-        }
-    }
+    String status = _avatarState == 'error'
+        ? 'Something went wrong. Try again.'
+        : switch (_voicePhase) {
+            VoicePhase.idle =>
+                _wakeWordMode ? 'Say "Hey Jarvis" to activate' : 'Type a message below to chat',
+            VoicePhase.listening => 'Say "Hey Jarvis" to activate',
+            VoicePhase.command => 'Listening for command...',
+            VoicePhase.thinking => 'Processing...',
+            VoicePhase.speaking => 'Speaking...',
+          };
 
     return Container(
       padding: Display.padding(context),
