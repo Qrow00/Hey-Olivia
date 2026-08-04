@@ -191,6 +191,23 @@ async def test_wake_model_reset_after_detection():
 
 
 @pytest.mark.anyio
+async def test_command_no_onset_times_out_to_listening(monkeypatch):
+    clock = {"t": 100.0}
+    monkeypatch.setattr("app.services.voice_session_service.time.monotonic", lambda: clock["t"])
+    send = SendCollector()
+    session = VoiceSession(send)
+    session._wake_model = FakeWakeModel(score=0.9)
+    session._vad = FakeVad([0.0])
+    await session._process_audio(SILENT_FRAME)
+    assert session.phase == SessionPhase.COMMAND
+    clock["t"] += 3.1
+    await session._process_audio(SILENT_FRAME)
+    assert session.phase == SessionPhase.LISTENING
+    phases = [m["phase"] for m in send.messages if m["type"] == "voice_phase"]
+    assert phases == ["command", "listening"]
+
+
+@pytest.mark.anyio
 async def test_vad_scan_chunks_into_480_sample_units():
     send = SendCollector()
     session = VoiceSession(send)

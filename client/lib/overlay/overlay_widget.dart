@@ -17,7 +17,6 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   int _heartRate = 0;
   int _spo2 = 0;
   int _steps = 0;
-  bool _wakeEnabled = true;
   bool _pressing = false;
 
   @override
@@ -48,12 +47,6 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       case 'wake_word_detected':
         setState(() => _avatarState = 'listening');
     }
-  }
-
-  void _toggleWake() {
-    _wakeEnabled = !_wakeEnabled;
-    _ws.send({'type': _wakeEnabled ? 'wake_word_start' : 'wake_word_stop'});
-    setState(() {});
   }
 
   void _startPtt() {
@@ -179,23 +172,6 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        GestureDetector(
-          onTap: _toggleWake,
-          child: Container(
-            padding: EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: _wakeEnabled
-                  ? Color(0xFF00e5ff).withValues(alpha: 0.15)
-                  : Color(0xFFf85149).withValues(alpha: 0.15),
-            ),
-            child: Icon(
-              _wakeEnabled ? Icons.wifi : Icons.wifi_off,
-              color: _wakeEnabled ? Color(0xFF00e5ff) : Color(0xFFf85149),
-              size: 16,
-            ),
-          ),
-        ),
-        SizedBox(width: 8),
         GestureDetector(
           onTapDown: (_) => _startPtt(),
           onTapUp: (_) => _stopPtt(),

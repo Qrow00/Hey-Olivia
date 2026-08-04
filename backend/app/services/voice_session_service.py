@@ -1,6 +1,7 @@
 """Server-side voice session: openWakeWord wake detection + Silero VAD command capture."""
 import asyncio
 import base64
+import binascii
 import re
 import time
 from datetime import datetime, timezone
@@ -21,6 +22,7 @@ OFFSET_FRAMES = 30           # ~900 ms
 MIN_COMMAND_SECONDS = 0.4
 MAX_COMMAND_SECONDS = 12.0
 SUPPRESSION_SECONDS = 1.0
+COMMAND_NO_ONSET_SECONDS = 3.0
 
 _WAKE_PHRASE_PATTERNS = [
     re.compile(r"^\s*hey\s+jar[a-z]*", re.IGNORECASE),
@@ -161,6 +163,7 @@ class VoiceSession:
         self._speech_frames = 0
         self._silence_frames = 0
         self._last_detection = 0.0
+        self._command_entered = float("inf")
 
     # ── public API ─────────────────────────────────────────────────────────────────────
     async def start(self) -> dict:
@@ -181,7 +184,10 @@ class VoiceSession:
         return {"status": "success"}
 
     async def feed_pcm(self, audio_b64: str):
-        data = base64.b64decode(audio_b64)
+        try:
+            data = base64.b64decode(audio_b64)
+        except (binascii.Error, ValueError):
+            return
         self._queue.put_nowait(data)
 
     async def on_tts_done(self):
@@ -259,6 +265,7 @@ class VoiceSession:
         self._wake_model.reset()
         self._reset_command_buffers()
         self.phase = SessionPhase.COMMAND
+        self._command_entered = now
         await self._send({
             "type": "wake_word_detected",
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -274,6 +281,11 @@ class VoiceSession:
             await self._track_vad(prob, chunk)
 
     async def _track_vad(self, prob: float, chunk: bytes):
+        if not self._in_speech and time.monotonic() - self._command_entered >= COMMAND_NO_ONSET_SECONDS:
+            self._reset_command_buffers()
+            self.phase = SessionPhase.LISTENING
+            await self._send({"type": "voice_phase", "phase": self.phase.value})
+            return
         if prob > VAD_THRESHOLD:
             self._silence_frames = 0
             if not self._in_speech:

@@ -2292,7 +2292,10 @@ async def handle_voice_mode_start(websocket: WebSocket, profile_id: str):
     ws_id = id(websocket)
     if ws_id in voice_sessions:
         return
-    threshold = float(settings_service.get(profile_id, "voice", "wake_word_sensitivity") or 0.5)
+    try:
+        threshold = float(settings_service.get(profile_id, "voice", "wake_word_sensitivity") or 0.5)
+    except (TypeError, ValueError):
+        threshold = 0.5
     session = VoiceSession(
         send=lambda payload: safe_send(websocket, payload),
         profile_id=profile_id,
