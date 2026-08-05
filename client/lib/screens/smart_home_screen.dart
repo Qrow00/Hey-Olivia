@@ -2,6 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/smart_device.dart';
 import '../services/smart_home_service.dart';
+import '../utils/theme.dart';
+
+const _bg = AppTheme.bg;
+const _panel = AppTheme.panel;
 
 class SmartHomeScreen extends StatefulWidget {
   final SmartHomeService smartHomeService;
@@ -52,7 +56,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF0a0a1a),
+      backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -97,7 +101,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
               label: Text(room),
               selected: isSelected,
               selectedColor: Colors.cyan,
-              backgroundColor: Color(0xFF1a1a2e),
+              backgroundColor: _panel,
               labelStyle: TextStyle(
                 color: isSelected ? Colors.white : Colors.white70,
                 fontSize: 12,
@@ -158,7 +162,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
         decoration: BoxDecoration(
           color: device.isOn
               ? Colors.cyan.withValues(alpha: 0.15)
-              : Color(0xFF1a1a2e),
+              : _panel,
           borderRadius: BorderRadius.circular(16),
           border: device.isOn
               ? Border.all(color: Colors.cyan.withValues(alpha: 0.5))
@@ -241,7 +245,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
   void _showDeviceControls(SmartDevice device) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Color(0xFF1a1a2e),
+      backgroundColor: _panel,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -366,7 +370,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: Color(0xFF1a1a2e),
+          backgroundColor: _panel,
           title: Text('Add Device', style: TextStyle(color: Colors.cyan)),
           content: SingleChildScrollView(
             child: Column(
@@ -385,7 +389,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
                 SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: selectedType,
-                  dropdownColor: Color(0xFF1a1a2e),
+                  dropdownColor: _panel,
                   style: TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     labelText: 'Type',
@@ -402,7 +406,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen> {
                 SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: selectedProtocol,
-                  dropdownColor: Color(0xFF1a1a2e),
+                  dropdownColor: _panel,
                   style: TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     labelText: 'Protocol',

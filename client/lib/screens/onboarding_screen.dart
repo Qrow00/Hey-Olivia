@@ -500,7 +500,7 @@ class _AvatarPainter extends CustomPainter {
 class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = AppTheme.hud.withValues(alpha: 0.08)..strokeWidth = 0.5;
+    final paint = Paint()..color = AppTheme.hud.withValues(alpha: 0x08 / 0xFF)..strokeWidth = 0.5;
     for (double x = 0; x < size.width; x += 40) canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     for (double y = 0; y < size.height; y += 40) canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
   }

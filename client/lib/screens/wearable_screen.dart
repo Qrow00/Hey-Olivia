@@ -2,6 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/wearable.dart';
 import '../services/wearable_service.dart';
+import '../utils/theme.dart';
+
+const _bg = AppTheme.bg;
+const _panel = AppTheme.panel;
 
 class WearableScreen extends StatefulWidget {
   final WearableService wearableService;
@@ -61,7 +65,7 @@ class _WearableScreenState extends State<WearableScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF0a0a1a),
+      backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -172,7 +176,7 @@ class _WearableScreenState extends State<WearableScreen> {
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Color(0xFF1a1a2e),
+        color: _panel,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -257,7 +261,7 @@ class _WearableScreenState extends State<WearableScreen> {
       margin: EdgeInsets.only(bottom: 12),
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Color(0xFF1a1a2e),
+        color: _panel,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -308,7 +312,7 @@ class _WearableScreenState extends State<WearableScreen> {
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Color(0xFF1a1a2e),
+        color: _panel,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -339,7 +343,7 @@ class _WearableScreenState extends State<WearableScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: Color(0xFF1a1a2e),
+          backgroundColor: _panel,
           title: Text('Add Wearable', style: TextStyle(color: Colors.cyan)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -359,7 +363,7 @@ class _WearableScreenState extends State<WearableScreen> {
               SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: selectedType,
-                dropdownColor: Color(0xFF1a1a2e),
+                dropdownColor: _panel,
                 style: TextStyle(color: Colors.white),
                 decoration: InputDecoration(
                   labelText: 'Device Type',
