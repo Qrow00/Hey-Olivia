@@ -23,6 +23,7 @@ class _AvatarWidgetState extends State<AvatarWidget>
       duration: const Duration(seconds: 8),
       vsync: this,
     )..repeat();
+    _updateSpeed();
   }
 
   @override
