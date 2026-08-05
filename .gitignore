@@ -14,7 +14,7 @@ client/.flutter-plugins-dependencies
 client/pubspec.lock
 
 # Python
-backend/*.db
+*.db
 backend/.env
 
 # IDE

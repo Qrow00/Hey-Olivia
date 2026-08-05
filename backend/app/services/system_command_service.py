@@ -277,6 +277,7 @@ class SystemCommandService:
         result = await self._run(f'taskkill /IM "{app_name}.exe" /F')
         return {"message": f"Closed {app_name}", **result}
 
+
     async def screenshot(self) -> dict:
         path = os.path.join(os.path.expanduser("~"), "Desktop", f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         result = await self._run(

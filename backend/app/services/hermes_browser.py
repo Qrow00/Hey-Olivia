@@ -129,6 +129,8 @@ class HermesBrowserService:
         max_wait = 30
         waited = 0
         while not _worker.is_ready() and waited < max_wait:
+            if _worker.get_init_error():
+                break
             await asyncio.sleep(0.5)
             waited += 0.5
         

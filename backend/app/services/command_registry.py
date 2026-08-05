@@ -617,6 +617,14 @@ class CommandRegistry:
         ))
 
         self.register(CommandPattern(
+            patterns=[r"run (?:a |the )?diagnostics?", r"start (?:a |the )?diagnostics?", r"run (?:the )?thermal (?:logger|diagnostic)", r"start (?:the )?thermal (?:logger|diagnostic)"],
+            handler="run_diagnostics",
+            description="Run system diagnostics (thermal logger)",
+            category="system",
+            examples=["Run diagnostics", "Start the thermal logger", "Run thermal diagnostic"],
+        ))
+
+        self.register(CommandPattern(
             patterns=[r"run (?:the )?command (.+)", r"execute (.+)", r"shell (.+)"],
             handler="run_command",
             description="Run a shell command",

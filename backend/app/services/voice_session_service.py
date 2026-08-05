@@ -55,6 +55,22 @@ def strip_wake_phrase(text: str) -> str:
     return cleaned
 
 
+def _pcm_to_wav(pcm: bytes, sample_rate: int = 16000) -> bytes:
+    byte_rate = sample_rate * 2
+    header = (
+        b"RIFF" + (36 + len(pcm)).to_bytes(4, "little") + b"WAVE"
+        + b"fmt " + (16).to_bytes(4, "little")
+        + (1).to_bytes(2, "little")
+        + (1).to_bytes(2, "little")
+        + sample_rate.to_bytes(4, "little")
+        + byte_rate.to_bytes(4, "little")
+        + (2).to_bytes(2, "little")
+        + (16).to_bytes(2, "little")
+        + b"data" + len(pcm).to_bytes(4, "little")
+    )
+    return header + pcm
+
+
 def _load_wake_model(model_names: list[str]):
     try:
         import openwakeword
@@ -104,6 +120,22 @@ async def _default_execute_command(text: str) -> dict:
     return await command_registry.execute_command(text)
 
 
+async def _default_llm_execute_command(text: str):
+    from app.services.command_registry import command_registry
+    parsed = await command_registry.llm_parse_command(text)
+    if not parsed or not parsed.get("handler"):
+        return None
+    handler = command_registry.handlers.get(parsed["handler"])
+    if handler is None:
+        return None
+    params = parsed.get("params", [])
+    try:
+        result = await handler(*params)
+    except Exception as e:
+        result = {"status": "error", "message": str(e)}
+    return {"handler": parsed["handler"], "params": params, "result": result}
+
+
 def _default_get_profile(profile_id: str):
     from app.services.personality_service import personality_service
     return personality_service.get_profile(profile_id)
@@ -128,6 +160,7 @@ class VoiceSession:
         chat_completion: Optional[Callable[[str, str], Awaitable[dict]]] = None,
         parse_command: Optional[Callable[[str], dict]] = None,
         execute_command: Optional[Callable[[str], Awaitable[dict]]] = None,
+        llm_execute_command: Optional[Callable[[str], Awaitable[Optional[dict]]]] = None,
         get_profile: Optional[Callable[[str], object]] = None,
         build_system_prompt: Optional[Callable[[str, str], str]] = None,
         is_introduction: Optional[Callable[[], bool]] = None,
@@ -146,6 +179,7 @@ class VoiceSession:
         self._chat_completion = chat_completion or _default_chat_completion
         self._parse_command = parse_command or _default_parse_command
         self._execute_command = execute_command or _default_execute_command
+        self._llm_execute_command = llm_execute_command or _default_llm_execute_command
         self._get_profile = get_profile or _default_get_profile
         self._build_system_prompt = build_system_prompt or _default_build_system_prompt
         self._is_introduction = is_introduction or (lambda: False)
@@ -167,7 +201,7 @@ class VoiceSession:
 
     # ── public API ─────────────────────────────────────────────────────────────────────
     async def start(self) -> dict:
-        self._wake_model = await asyncio.to_thread(self._wake_factory, self._model_names)
+        self._wake_model = await asyncio.to_thread(self._wake_factory, list(self._model_names))
         if self._wake_model is None:
             await self._send({"type": "voice_mode_ready", "status": "error",
                               "message": "Could not load openWakeWord model"})
@@ -253,7 +287,7 @@ class VoiceSession:
             await self._vad_scan(frame)
 
     async def _wake_scan(self, frame: bytes):
-        audio = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32768.0
+        audio = np.frombuffer(frame, dtype=np.int16)
         scores = self._wake_model.predict(audio)
         score = max(float(scores.get(m, 0.0)) for m in self._model_names)
         if score <= self._threshold:
@@ -332,7 +366,7 @@ class VoiceSession:
 
     async def _finalize_introduction(self, audio: bytes):
         profile = self._get_profile(self._profile_id)
-        stt = await self._speech_to_text(audio)
+        stt = await self._speech_to_text(_pcm_to_wav(audio))
         text = stt.get("text", "").strip().strip(".").strip()
         name = " ".join(w.capitalize() for w in text.split() if w.isalpha())
         if name:
@@ -358,7 +392,7 @@ class VoiceSession:
         await self._send({"type": "voice_phase", "phase": self.phase.value})
 
     async def _finalize_command(self, audio: bytes):
-        stt = await self._speech_to_text(audio)
+        stt = await self._speech_to_text(_pcm_to_wav(audio))
         text = stt.get("text", "").strip()
         command_text = strip_wake_phrase(text)
         if not command_text:
@@ -402,7 +436,27 @@ class VoiceSession:
                 "Respond with a short natural sentence (1-2 lines) about what was done. Be helpful and conversational."
             )
         else:
-            prompt = command_text
+            llm_execution = await self._llm_execute_command(command_text)
+            if llm_execution and llm_execution.get("result"):
+                result_data = llm_execution["result"]
+                result_message = result_data.get("message", "Command executed.")
+                extra_info = ""
+                for k, v in result_data.items():
+                    if k not in ("status", "message") and v:
+                        if isinstance(v, list):
+                            extra_info += f"\n{k}: {', '.join(str(i) for i in v[:10])}"
+                        elif isinstance(v, str) and len(v) > 5:
+                            extra_info += f"\n{k}: {v}"
+                        elif isinstance(v, dict):
+                            extra_info += f"\n{k}: {v}"
+                prompt = (
+                    f'The user said: "{command_text}"\n'
+                    f"Command executed: {llm_execution['handler']}\n"
+                    f"Result: {result_message}{extra_info}\n\n"
+                    "Respond with a short natural sentence (1-2 lines) about what was done. Be helpful and conversational."
+                )
+            else:
+                prompt = command_text
         llm = await self._chat_completion(
             prompt,
             self._build_system_prompt(command_text, self._profile_id),

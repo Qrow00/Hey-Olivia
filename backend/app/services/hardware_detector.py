@@ -63,8 +63,11 @@ def _parse_version(text: str) -> Optional[tuple]:
     return tuple(int(x) for x in m.groups()) if m else None
 
 
+PROJECT_OLLAMA = r"D:\project\Jarvis project\Hey-Olivia\backend\ollama\ollama.exe"
+
+
 def ollama_version() -> Optional[tuple]:
-    exe = shutil.which("ollama")
+    exe = shutil.which("ollama") or (PROJECT_OLLAMA if os.path.exists(PROJECT_OLLAMA) else None)
     if not exe:
         return None
     try:

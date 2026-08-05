@@ -61,6 +61,9 @@ def _register_system_handlers():
     command_registry.register_handler("open_app", scs.open_app)
     command_registry.register_handler("open_browser", scs.open_browser)
 
+    from app.services.diagnostics_service import diagnostics_service
+    command_registry.register_handler("run_diagnostics", diagnostics_service.run)
+
     async def browser_open_youtube(query: str = "") -> dict:
         print(f"[YOUTUBE] Opening YouTube with query: '{query}'")
         if not await _ensure_browser_session():
@@ -2521,11 +2524,25 @@ async def handle_device_mesh_devices(websocket: WebSocket):
 
 # ── Monitoring Alert Broadcast ─────────────────────────────────────────────────
 
+async def _broadcast_voice_alert(alert: dict):
+    text = f"Alert. {alert.get('message', 'System alert')}"
+    try:
+        audio = await asyncio.wait_for(voice_service.text_to_speech(text), timeout=15)
+    except Exception as e:
+        print(f"[MONITORING] Voice alert failed: {e}")
+        return
+    await broadcast({
+        "type": "voice_alert",
+        "audio": base64.b64encode(audio).decode("ascii"),
+    })
+
+
 async def _monitoring_alert_callback(alert: dict):
     await broadcast({
         "type": "system_alert",
         "alert": alert,
     })
+    asyncio.create_task(_broadcast_voice_alert(alert))
 
 
 def _setup_monitoring_broadcast():

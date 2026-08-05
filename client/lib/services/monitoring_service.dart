@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'websocket_service.dart';
 
 class MonitoringData {
@@ -158,11 +157,13 @@ class MonitoringService {
 
   final _snapshotController = StreamController<MonitoringData>.broadcast();
   final _alertController = StreamController<List<AlertData>>.broadcast();
+  final _newAlertController = StreamController<AlertData>.broadcast();
   final _processController = StreamController<List<ProcessData>>.broadcast();
   final _activityController = StreamController<List<ActivityEntry>>.broadcast();
 
   Stream<MonitoringData> get snapshot => _snapshotController.stream;
   Stream<List<AlertData>> get alerts => _alertController.stream;
+  Stream<AlertData> get newAlerts => _newAlertController.stream;
   Stream<List<ProcessData>> get processes => _processController.stream;
   Stream<List<ActivityEntry>> get activityLog => _activityController.stream;
   MonitoringData? get latest => _latest;
@@ -187,9 +188,11 @@ class MonitoringService {
       } else if (type == 'system_alert') {
         final alert = message['alert'];
         if (alert != null) {
-          _alerts.add(AlertData.fromJson(Map<String, dynamic>.from(alert)));
+          final parsed = AlertData.fromJson(Map<String, dynamic>.from(alert));
+          _alerts.add(parsed);
           if (_alerts.length > 50) _alerts = _alerts.sublist(_alerts.length - 50);
           _alertController.add(List.unmodifiable(_alerts));
+          _newAlertController.add(parsed);
         }
       } else if (type == 'monitoring_alerts') {
         final list = message['alerts'] as List?;
@@ -243,11 +246,13 @@ class MonitoringService {
     });
   }
 
-  void startAutoRefresh({Duration interval = const Duration(seconds: 30)}) {
+  void startAutoRefresh({Duration interval = const Duration(seconds: 3)}) {
     _pollTimer?.cancel();
     requestSnapshot();
     _pollTimer = Timer.periodic(interval, (_) {
       requestSnapshot();
+      requestProcesses();
+      requestActivityLog();
     });
   }
 
@@ -260,6 +265,7 @@ class MonitoringService {
     _pollTimer?.cancel();
     _snapshotController.close();
     _alertController.close();
+    _newAlertController.close();
     _processController.close();
     _activityController.close();
   }

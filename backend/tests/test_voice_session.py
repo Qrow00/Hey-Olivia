@@ -128,6 +128,25 @@ def test_strip_wake_phrase():
     assert strip_wake_phrase("no wake word here") == "no wake word here"
 
 
+def test_pcm_to_wav_wraps_raw_pcm_with_riff_header():
+    from app.services.voice_session_service import _pcm_to_wav
+
+    pcm = b"\x00\x00\xff\xff\x01\x00"
+    wav = _pcm_to_wav(pcm)
+
+    assert wav[:4] == b"RIFF"
+    assert wav[8:12] == b"WAVE"
+    assert wav[12:16] == b"fmt "
+    assert int.from_bytes(wav[20:22], "little") == 1      # PCM format
+    assert int.from_bytes(wav[22:24], "little") == 1      # mono
+    assert int.from_bytes(wav[24:28], "little") == 16000  # sample rate
+    assert int.from_bytes(wav[34:36], "little") == 16     # bits per sample
+    assert wav[36:40] == b"data"
+    assert wav[4:8] == (36 + len(pcm)).to_bytes(4, "little")
+    assert wav[40:44] == len(pcm).to_bytes(4, "little")
+    assert wav.endswith(pcm)
+
+
 @pytest.mark.anyio
 async def test_feed_pcm_puts_decoded_bytes_on_queue():
     session = VoiceSession(SendCollector())
@@ -147,6 +166,42 @@ async def test_wake_detection_transitions_to_command():
     assert session.phase == SessionPhase.COMMAND
     phases = [m["phase"] for m in send.messages if m["type"] == "voice_phase"]
     assert phases == ["command"]
+
+
+@pytest.mark.anyio
+async def test_wake_model_receives_int16_pcm_not_float():
+    send = SendCollector()
+    model = FakeWakeModel(score=0.9)
+    session = VoiceSession(send)
+    session._wake_model = model
+    samples = np.array([1000, -2000, 3000, -4000], dtype=np.int16)
+    frame = (samples.tobytes() * 320)
+    assert len(frame) == FRAME_BYTES
+    await session._process_audio(frame)
+    assert len(model.frames) == 1
+    received = model.frames[0]
+    assert received.dtype == np.int16
+    assert (received[:4] == samples).all()
+
+
+@pytest.mark.anyio
+async def test_start_preserves_model_names():
+    send = SendCollector()
+    seen = {}
+
+    def factory(names):
+        seen["names"] = list(names)
+        model = FakeWakeModel(score=0.9)
+        names[:] = ["D:\\mutated\\by\\oww\\hey_jarvis_v0.1.onnx"]
+        return model
+
+    session = VoiceSession(send, wake_factory=factory, vad_factory=lambda: FakeVad([0.1]))
+    await session.start()
+    assert session._model_names == ["hey_jarvis"]
+    assert seen["names"] == ["hey_jarvis"]
+    await session._process_audio(SILENT_FRAME)
+    assert any(m["type"] == "wake_word_detected" for m in send.messages)
+    await session.stop()
 
 
 @pytest.mark.anyio
@@ -260,12 +315,16 @@ def finalize_session(send, **kw):
     async def _execute_command(text):
         return {"result": {"status": "success", "message": "Lights on"}}
 
+    async def _noop_llm_execute(text):
+        return None
+
     defaults = dict(
         speech_to_text=_speech_to_text,
         text_to_speech=_text_to_speech,
         chat_completion=_chat_completion,
         parse_command=lambda text: {"matched": True, "handler": "lights", "category": "smart_home"},
         execute_command=_execute_command,
+        llm_execute_command=_noop_llm_execute,
         get_profile=lambda pid: FakeProfile(),
     )
     defaults.update(kw)
@@ -339,6 +398,53 @@ async def test_finalize_llm_only_when_no_command_match():
     resp = [m for m in send.messages if m["type"] == "voice_response"][-1]
     assert resp["response"] == "Done."
     assert resp["transcription"] == "turn on the lights"
+
+
+@pytest.mark.anyio
+async def test_finalize_sends_wav_wrapped_pcm_to_stt():
+    send = SendCollector()
+    seen = {}
+
+    async def capture_stt(audio):
+        seen["audio"] = bytes(audio)
+        return {"text": "turn on the lights", "confidence": 0.9}
+
+    session = finalize_session(send, speech_to_text=capture_stt)
+    await run_finalize(session)
+    assert seen["audio"][:4] == b"RIFF"
+    assert seen["audio"][8:12] == b"WAVE"
+    assert len(seen["audio"]) == 44 + int(3.0 * 16000 * 2)
+
+
+@pytest.mark.anyio
+async def test_finalize_llm_parse_fallback_executes_command():
+    send = SendCollector()
+    executed = []
+    prompts = []
+
+    async def llm_execute(text):
+        executed.append(text)
+        return {"handler": "open_app", "params": ["brave"],
+                "result": {"status": "success", "message": "Opened Brave"}}
+
+    async def chat(msg, sp):
+        prompts.append(msg)
+        return {"response": "Done.", "model": "llama3.2"}
+
+    session = finalize_session(
+        send,
+        parse_command=lambda text: {"matched": False},
+        chat_completion=chat,
+    )
+    session._llm_execute_command = llm_execute
+    await run_finalize(session)
+
+    assert executed == ["turn on the lights"]
+    assert "Opened Brave" in prompts[0]
+    assert "open_app" in prompts[0]
+    resp = [m for m in send.messages if m["type"] == "voice_response"][-1]
+    assert resp["transcription"] == "turn on the lights"
+    assert session.phase == SessionPhase.SPEAKING
 
 
 @pytest.mark.anyio

@@ -12,7 +12,7 @@ class ActivityLogger:
         self._log: list[dict] = []
         self._max_entries = 5000
         self._polling = False
-        self._poll_interval = 60
+        self._poll_interval = 10
         self._active_window_history: list[dict] = []
         self._process_snapshots: list[dict] = []
         self._listeners: list = []
@@ -91,32 +91,26 @@ class ActivityLogger:
             pass
         return None
 
-    def _get_top_processes_windows(self) -> list[dict]:
-        try:
-            result = subprocess.run(
-                ["powershell", "-Command",
-                 "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 15 Name, Id, CPU, WorkingSet64 | ConvertTo-Json"],
-                capture_output=True, text=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW
-            )
-            import json
-            raw = json.loads(result.stdout)
-            if isinstance(raw, dict):
-                raw = [raw]
-            processes = []
-            for p in raw:
+    def _get_top_processes(self) -> list[dict]:
+        processes = []
+        for p in psutil.process_iter(["name", "pid", "memory_info", "cpu_times"]):
+            try:
+                mem = p.info["memory_info"].rss
+                ct = p.info.get("cpu_times")
+                cpu = round(ct.user + ct.system, 1) if ct else 0
                 processes.append({
-                    "name": p.get("Name", ""),
-                    "pid": p.get("Id", 0),
-                    "cpu_seconds": round(p.get("CPU", 0), 1),
-                    "memory_mb": round(p.get("WorkingSet64", 0) / (1024 * 1024), 1),
+                    "name": p.info.get("name") or "",
+                    "pid": p.info.get("pid", 0),
+                    "cpu_seconds": cpu,
+                    "memory_mb": round(mem / (1024 * 1024), 1),
                 })
-            return sorted(processes, key=lambda x: x["memory_mb"], reverse=True)
-        except Exception:
-            return []
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return sorted(processes, key=lambda x: x["memory_mb"], reverse=True)[:15]
 
     def _collect_snapshot(self) -> dict:
         window = self._get_active_window_windows()
-        processes = self._get_top_processes_windows()
+        processes = self._get_top_processes()
 
         snapshot = {
             "timestamp": time.time(),

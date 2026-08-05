@@ -48,3 +48,9 @@ npm install -g codeburn  # permanent install
 
 ## Application
 Run `npx codeburn` from project directory to track Hey-Olivia's token usage. Use `codeburn optimize` periodically to find waste patterns. Use `codeburn yield` to see what spend actually shipped.
+
+## Implemented (2026-08-05)
+- Installed globally via npm: `codeburn@0.9.19` → `C:\Users\toshi\AppData\Roaming\npm\codeburn.cmd`. Node 24.19.0 meets the 22.13+ requirement.
+- Windows quirk: the `.ps1` shim is blocked by PowerShell execution policy — always invoke `codeburn.cmd` (full path).
+- Reads opencode sessions from `%USERPROFILE%\.local\share\opencode\opencode.db` (verified: 3 sessions).
+- Wired into opencode via `/codeburn` command (`.opencode/command/codeburn.md`) and the `codeburn` skill (`.opencode/skills/codeburn/SKILL.md`).

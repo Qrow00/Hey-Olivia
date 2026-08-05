@@ -2,6 +2,9 @@
   "default": {
     "voice": {
       "llm_model": "llama3.2"
+    },
+    "health": {
+      "alerts_enabled": true
     }
   }
 }

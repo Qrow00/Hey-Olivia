@@ -40,3 +40,24 @@ def test_get_all_commands():
     cmds = r.get_all_commands()
     assert len(cmds) > 0
     assert all("handler" in c for c in cmds)
+
+
+def test_parse_run_diagnostics():
+    r = CommandRegistry()
+    result = r.parse_command("run diagnostics")
+    assert result["matched"] is True
+    assert result["handler"] == "run_diagnostics"
+    assert result["category"] == "system"
+
+
+def test_parse_start_thermal_logger():
+    r = CommandRegistry()
+    result = r.parse_command("start the thermal logger")
+    assert result["matched"] is True
+    assert result["handler"] == "run_diagnostics"
+
+
+def test_parse_run_diagnostics_not_open_app():
+    r = CommandRegistry()
+    result = r.parse_command("run diagnostics")
+    assert result["handler"] != "open_app"

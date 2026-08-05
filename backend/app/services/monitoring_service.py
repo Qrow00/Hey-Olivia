@@ -1,23 +1,19 @@
 import asyncio
+import subprocess
 import time
 from datetime import datetime, timezone
 from typing import Optional
 import psutil
 
-try:
-    import GPUtil
-    _HAS_GPUTIL = True
-except ImportError:
-    _HAS_GPUTIL = False
-
 
 class MonitoringService:
     def __init__(self):
         self._polling = False
-        self._poll_interval = 30
+        self._poll_interval = 3
         self._latest: dict = {}
         self._history: list[dict] = []
-        self._max_history = 2880  # 24h at 30s intervals
+        self._max_history = 2880  # ~2.4h at 3s intervals
+        self._cpu_warmed = False
         self._listeners: list = []
         self._alert_thresholds = {
             "cpu_percent": 90.0,
@@ -25,12 +21,19 @@ class MonitoringService:
             "disk_percent": 90.0,
             "gpu_temp": 85.0,
             "gpu_load": 95.0,
+            "process_count": 350.0,
+            "top_process_memory_mb": 2048.0,
         }
         self._previous_alerts: dict[str, float] = {}
         self._alert_cooldown = 300
+        self._process_cache: dict = {}
+        self._process_cache_time = 0.0
+        self._process_cache_ttl = 15
 
     def get_snapshot(self) -> dict:
-        return self._latest.copy() if self._latest else self._collect_once()
+        if self._latest and time.time() - self._latest.get("timestamp", 0) < self._poll_interval:
+            return self._latest.copy()
+        return self._collect_once()
 
     def get_history(self, minutes: int = 60) -> list[dict]:
         cutoff = time.time() - (minutes * 60)
@@ -56,27 +59,79 @@ class MonitoringService:
         except ValueError:
             pass
 
+    def _cpu_sample(self) -> float:
+        if not self._cpu_warmed:
+            self._cpu_warmed = True
+            return psutil.cpu_percent(interval=0.3) or 0.0
+        return psutil.cpu_percent(interval=None) or 0.0
+
+    def _gpu_info(self) -> dict:
+        try:
+            out = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=3,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            ).stdout.strip()
+        except Exception:
+            return {}
+        parts = [p.strip() for p in out.split(",")]
+        if len(parts) < 5:
+            return {}
+        try:
+            load = float(parts[1])
+            mem_used = float(parts[2])
+            mem_total = float(parts[3])
+            temp = float(parts[4])
+        except ValueError:
+            return {}
+        return {
+            "gpu_name": parts[0],
+            "gpu_load": round(load, 1),
+            "gpu_memory_used": round(mem_used, 1),
+            "gpu_memory_total": round(mem_total, 1),
+            "gpu_memory_percent": round(mem_used / mem_total * 100, 1) if mem_total > 0 else 0,
+            "gpu_temp": temp,
+        }
+
+    def _process_info(self) -> dict:
+        now = time.time()
+        if self._process_cache and now - self._process_cache_time < self._process_cache_ttl:
+            return self._process_cache
+        try:
+            procs = []
+            for p in psutil.process_iter(["name", "memory_info"]):
+                try:
+                    name = p.info.get("name") or ""
+                    mem = p.info.get("memory_info")
+                    rss = mem.rss if mem else 0
+                    procs.append((name, rss))
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except Exception:
+            return self._process_cache or {
+                "process_count": 0,
+                "top_process_name": "",
+                "top_process_memory_mb": 0,
+            }
+        if procs:
+            name, rss = max(procs, key=lambda x: x[1])
+            result = {
+                "process_count": len(procs),
+                "top_process_name": name,
+                "top_process_memory_mb": int(rss / (1024 ** 2)),
+            }
+        else:
+            result = {"process_count": 0, "top_process_name": "", "top_process_memory_mb": 0}
+        self._process_cache = result
+        self._process_cache_time = now
+        return result
+
     def _collect_once(self) -> dict:
-        cpu = psutil.cpu_percent(interval=0.5)
+        cpu = self._cpu_sample()
         ram = psutil.virtual_memory()
         disk = psutil.disk_usage("/")
 
-        gpu_info = {}
-        if _HAS_GPUTIL:
-            try:
-                gpus = GPUtil.getGPUs()
-                if gpus:
-                    g = gpus[0]
-                    gpu_info = {
-                        "gpu_name": g.name,
-                        "gpu_load": round(g.load * 100, 1),
-                        "gpu_memory_used": round(g.memoryUsed, 1),
-                        "gpu_memory_total": round(g.memoryTotal, 1),
-                        "gpu_memory_percent": round(g.memoryUsed / g.memoryTotal * 100, 1) if g.memoryTotal > 0 else 0,
-                        "gpu_temp": round(g.temperature, 1) if g.temperature else 0,
-                    }
-            except Exception:
-                pass
+        gpu_info = self._gpu_info()
 
         net = psutil.net_io_counters()
         boot = psutil.boot_time()
@@ -100,6 +155,7 @@ class MonitoringService:
             "alert": False,
             "alert_details": [],
             **gpu_info,
+            **self._process_info(),
         }
 
         alerts = self._check_thresholds(snapshot)
@@ -119,14 +175,16 @@ class MonitoringService:
         now = time.time()
 
         checks = [
-            ("cpu_percent", snapshot.get("cpu_percent", 0), "CPU Usage"),
-            ("ram_percent", snapshot.get("ram_percent", 0), "RAM Usage"),
-            ("disk_percent", snapshot.get("disk_percent", 0), "Disk Usage"),
-            ("gpu_temp", snapshot.get("gpu_temp", 0), "GPU Temperature"),
-            ("gpu_load", snapshot.get("gpu_load", 0), "GPU Load"),
+            ("cpu_percent", snapshot.get("cpu_percent", 0), "CPU Usage", "%"),
+            ("ram_percent", snapshot.get("ram_percent", 0), "RAM Usage", "%"),
+            ("disk_percent", snapshot.get("disk_percent", 0), "Disk Usage", "%"),
+            ("gpu_temp", snapshot.get("gpu_temp", 0), "GPU Temperature", "%"),
+            ("gpu_load", snapshot.get("gpu_load", 0), "GPU Load", "%"),
+            ("process_count", snapshot.get("process_count", 0), "Running Processes", ""),
+            ("top_process_memory_mb", snapshot.get("top_process_memory_mb", 0), "Largest Process", " MB"),
         ]
 
-        for metric, value, label in checks:
+        for metric, value, label, unit in checks:
             threshold = self._alert_thresholds.get(metric, 100)
             if value >= threshold:
                 last_alert = self._previous_alerts.get(metric, 0)
@@ -138,7 +196,7 @@ class MonitoringService:
                         "value": value,
                         "threshold": threshold,
                         "severity": severity,
-                        "message": f"{label} at {value}% (threshold: {threshold}%)",
+                        "message": f"{label} at {value:g}{unit} (threshold: {threshold:g}{unit})",
                     })
                     self._previous_alerts[metric] = now
 

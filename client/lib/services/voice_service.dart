@@ -131,6 +131,10 @@ class VoiceService {
           _playAudio(message['audio']);
         }
         break;
+      case 'voice_alert':
+        print('[Voice] Voice alert received');
+        _playAudio(message['audio'], announceDone: false);
+        break;
       case 'text_response':
         _safeAdd(_responseController, message['response'] ?? '');
         break;
@@ -175,7 +179,7 @@ class VoiceService {
 
   static const _ttsChannel = MethodChannel('tts_plugin');
 
-  Future<void> _playAudio(String? audioBase64) async {
+  Future<void> _playAudio(String? audioBase64, {bool announceDone = true}) async {
     if (audioBase64 == null || audioBase64.isEmpty || _isDisposed) return;
 
     _stopCurrentPlayer();
@@ -232,7 +236,7 @@ class VoiceService {
       _currentPlayer = null;
       print('[Voice] TTS playback done');
       _safeAdd(_ttsDoneController, null);
-      if (!_isDisposed && !_exitPending) {
+      if (!_isDisposed && !_exitPending && announceDone) {
         _webSocketService.send({'type': 'tts_done'});
       }
 

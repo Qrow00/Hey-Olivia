@@ -1,3 +1,4 @@
+import asyncio
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -60,10 +61,14 @@ async def startup():
 
     if service_enabled("browser"):
         from app.services.hermes_browser import hermes_browser
-        try:
-            await hermes_browser.initialize()
-        except Exception as e:
-            print(f"[HERMES BROWSER] Init deferred: {e}")
+
+        async def _init_browser():
+            try:
+                await hermes_browser.initialize()
+            except Exception as e:
+                print(f"[HERMES BROWSER] Init deferred: {e}")
+
+        asyncio.create_task(_init_browser())
 
     if service_enabled("monitoring"):
         from app.services.monitoring_service import monitoring_service
@@ -78,10 +83,13 @@ async def startup():
     await wearable_service.load_from_db()
 
     from app.services.system_config import system_config_service
-    system_config_service.auto_adapt()
+    asyncio.create_task(asyncio.to_thread(system_config_service.auto_adapt))
 
     from app.services.voice_service import voice_service
-    await voice_service.initialize()
+    asyncio.create_task(voice_service.initialize())
+
+    from app.services.thermal_logger_service import thermal_logger_service
+    thermal_logger_service.start()
 
     print(f"J.A.R.V.I.S. v2.0.0 initialized — services=[{JARVIS_SERVICES}]")
 
@@ -100,6 +108,9 @@ async def shutdown():
         from app.services.activity_logger import activity_logger
         await monitoring_service.stop_polling()
         await activity_logger.stop_polling()
+
+    from app.services.thermal_logger_service import thermal_logger_service
+    thermal_logger_service.stop()
 
     print("J.A.R.V.I.S. shutdown — memory saved")
 

@@ -23,3 +23,6 @@ Before writing any code, descend this ladder. Stop at the first satisfied rung:
 
 ## Application
 Always descend this ladder before any new code. Most things should stop at rung 1-3.
+
+## Implemented (2026-08-05)
+- Active as the `ponytail` opencode skill (`.opencode/skills/ponytail/SKILL.md`) — auto-loads on code-writing/review tasks, plus a review checklist for existing code.

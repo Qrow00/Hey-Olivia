@@ -18,6 +18,9 @@ Persistent knowledge for opencode sessions. Linked from `.opencode/memory.md`.
 
 ## Learnings
 - [[GTX 1050 cannot JIT Ollama CUDA PTX]]
+- [[CodeBurn token usage tracker]]
+- [[Headroom context compression for opencode]]
+- [[Graphify knowledge graph for opencode]]
 
 ## Context
 - [[Project scope]]

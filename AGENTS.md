@@ -10,6 +10,14 @@ The user's laptop (ASUS GL553VD) shuts down randomly. See **`vault/memory/Contex
 
 - ALWAYS run the backend externally — launch `run-backend.ps1` in its own detached PowerShell window via `Start-Process`, never in the opencode shell session.
 
+## Superpowers Skills
+
+The project vendors the obra/superpowers skill library in `.opencode/skills/` (adapted for opencode + Windows PowerShell). When starting a task, check for a matching skill BEFORE writing code and load it via the `skill` tool.
+
+- **Bootstrap:** `using-superpowers` — always load it first when a task might match a skill. It lists the skill-first rule, priority order, and platform adaptations.
+- Planning → `brainstorming`, `writing-plans`; Execution → `subagent-driven-development`, `executing-plans`, `test-driven-development`; QA/quality → `verification-before-completion`, `systematic-debugging`, `requesting-code-review`, `receiving-code-review`; Git → `using-git-worktrees`, `finishing-a-development-branch`; Concurrency → `dispatching-parallel-agents`; Meta → `writing-skills`.
+- `superpowers:` skill references resolve to local skills in `.opencode/skills/`. opencode subagents run on the session model (no model field). This machine's PowerShell has a Restricted execution policy — run `.ps1` skill scripts via `powershell -NoProfile -ExecutionPolicy Bypass -File <script>`.
+
 ## gstack Workflow
 
 Available skills (use `/skill-name` to activate):
@@ -67,3 +75,16 @@ Before writing any code, descend this ladder (stop at first satisfied rung):
 - Use `ollama/llama3.2:latest` for conversation and planning
 - Always verify local model availability before assuming GPU access
 - GPU is detected at startup by `backend/app/services/hardware_detector.py` (nvidia-smi + torch). Since Ollama v0.12.0 the GTX 1050 (Pascal, CC 6.1) runs the LLM on GPU; the CPU runner is only forced when the installed Ollama predates v0.12.0 or the compute capability is below 6.0. Never hardcode GPU assumptions.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

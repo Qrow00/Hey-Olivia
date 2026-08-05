@@ -8,11 +8,9 @@ _ffmpeg_dir = os.path.join(os.path.expanduser("~"), "ffmpeg")
 if os.path.isdir(_ffmpeg_dir):
     os.environ["PATH"] = _ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
 
-import whisper
 import edge_tts
 import ollama
 import numpy as np
-import soundfile as sf
 
 from app.services.voice_profile_service import voice_profile_service
 from app.services.personality_service import personality_service
@@ -29,6 +27,7 @@ class VoiceService:
         self.tts_voice = "en-US-GuyNeural"
         self.llm_model = "llama3.2"
         self._initialized = False
+        self._init_lock = asyncio.Lock()
         self._max_history = 15
 
     def _get_model(self, profile_id: str = "default") -> str:
@@ -40,30 +39,38 @@ class VoiceService:
     async def initialize(self):
         if self._initialized:
             return
-        self._device = detect_stt_device()
-        self._fp16 = False
-        stt_model = self._get_stt_model()
-        print(f"Loading Whisper STT model ({stt_model}, {self._device})...")
-        if self._device == "cuda":
-            import torch
-            torch.cuda.set_per_process_memory_fraction(0.5)
-        self.stt_model = whisper.load_model(stt_model, device=self._device)
-        self.llm_model = self._get_model()
-        print(f"Voice service initialized, warming {self.llm_model}...")
-        try:
-            await asyncio.wait_for(
-                asyncio.to_thread(
-                    ollama.chat,
-                    model=self.llm_model,
-                    messages=[{"role": "user", "content": "Hello"}],
-                    options={"num_ctx": 2048}
-                ),
-                timeout=30
-            )
-            print(f"[LLM] {self.llm_model} warmed up")
-        except Exception as e:
-            print(f"[LLM] Warm-up skipped: {e}")
-        self._initialized = True
+        async with self._init_lock:
+            if self._initialized:
+                return
+            self._device = detect_stt_device()
+            self._fp16 = False
+            stt_model = self._get_stt_model()
+            print(f"Loading Whisper STT model ({stt_model}, {self._device})...")
+
+            def _load_stt():
+                if self._device == "cuda":
+                    import torch
+                    torch.cuda.set_per_process_memory_fraction(0.5)
+                import whisper
+                return whisper.load_model(stt_model, device=self._device)
+
+            self.stt_model = await asyncio.to_thread(_load_stt)
+            self.llm_model = self._get_model()
+            print(f"Voice service initialized, warming {self.llm_model}...")
+            try:
+                await asyncio.wait_for(
+                    asyncio.to_thread(
+                        ollama.chat,
+                        model=self.llm_model,
+                        messages=[{"role": "user", "content": "Hello"}],
+                        options={"num_ctx": 2048}
+                    ),
+                    timeout=30
+                )
+                print(f"[LLM] {self.llm_model} warmed up")
+            except Exception as e:
+                print(f"[LLM] Warm-up skipped: {e}")
+            self._initialized = True
 
     async def speech_to_text(self, audio_data: bytes, language: str = "en") -> dict:
         if not self._initialized:
