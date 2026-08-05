@@ -39,3 +39,9 @@ backend/logs/
 
 # Local models
 models/
+
+# Project-local Ollama install
+backend/ollama/
+
+# Git worktrees
+.worktrees/
