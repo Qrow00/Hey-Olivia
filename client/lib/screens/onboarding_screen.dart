@@ -3,14 +3,15 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../services/server_config.dart';
 import 'main_screen.dart';
+import '../utils/theme.dart';
 
-const _void = Color(0xFF06080d);
-const _hud = Color(0xFF00e5ff);
-const _panel = Color(0xFF0d1117);
-const _text = Color(0xFFc9d1d9);
-const _textDim = Color(0xFF6e7681);
-const _success = Color(0xFF3fb950);
-const _danger = Color(0xFFf85149);
+const _void = AppTheme.bg;
+const _hud = AppTheme.hud;
+const _panel = AppTheme.panel;
+const _text = AppTheme.text;
+const _textDim = AppTheme.textDim;
+const _success = AppTheme.accentGreen;
+const _danger = AppTheme.accentRed;
 
 class OnboardingScreen extends StatefulWidget {
   final int initialStep;
@@ -499,7 +500,7 @@ class _AvatarPainter extends CustomPainter {
 class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Color(0x0800e5ff)..strokeWidth = 0.5;
+    final paint = Paint()..color = AppTheme.hud.withValues(alpha: 0.08)..strokeWidth = 0.5;
     for (double x = 0; x < size.width; x += 40) canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     for (double y = 0; y < size.height; y += 40) canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
   }

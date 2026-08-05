@@ -4,15 +4,16 @@ import 'package:fl_chart/fl_chart.dart';
 import '../models/wearable.dart';
 import '../services/wearable_service.dart';
 import '../utils/responsive.dart';
+import '../utils/theme.dart';
 
-const _bg = Color(0xFF080818);
-const _panel = Color(0xFF10102a);
-const _hud = Color(0xFF00e5ff);
-const _hudDim = Color(0xFF0077b6);
-const _text = Color(0xFFE0E0E0);
-const _textDim = Color(0xFF6e7681);
-const _danger = Color(0xFFFF6D00);
-const _success = Color(0xFF00C853);
+const _bg = AppTheme.bg;
+const _panel = AppTheme.panel;
+const _hud = AppTheme.hud;
+const _hudDim = AppTheme.hudDim;
+const _text = AppTheme.text;
+const _textDim = AppTheme.textDim;
+const _danger = AppTheme.accentAmber;
+const _success = AppTheme.accentGreen;
 
 class HealthScreen extends StatefulWidget {
   final WearableService wearableService;

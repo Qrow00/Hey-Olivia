@@ -12,6 +12,7 @@ import 'camera_screen.dart';
 import 'personality_screen.dart';
 import 'specs_check_screen.dart';
 import '../services/websocket_service.dart';
+import '../services/voice_service.dart';
 import '../services/device_service.dart';
 import '../services/screen_share_service.dart';
 import '../services/camera_service.dart';
@@ -20,15 +21,16 @@ import '../services/smart_home_service.dart';
 import '../services/vision_service.dart';
 import '../services/server_config.dart';
 import '../utils/responsive.dart';
+import '../utils/theme.dart';
 
-const _bg = Color(0xFF080818);
-const _panel = Color(0xFF10102a);
-const _hud = Color(0xFF00e5ff);
-const _hudDim = Color(0xFF0077b6);
-const _text = Color(0xFFE0E0E0);
-const _textDim = Color(0xFF6e7681);
-const _danger = Color(0xFFFF6D00);
-const _success = Color(0xFF00C853);
+const _bg = AppTheme.bg;
+const _panel = AppTheme.panel;
+const _hud = AppTheme.hud;
+const _hudDim = AppTheme.hudDim;
+const _text = AppTheme.text;
+const _textDim = AppTheme.textDim;
+const _danger = AppTheme.accentAmber;
+const _success = AppTheme.accentGreen;
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -41,6 +43,7 @@ class MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   bool _servicesReady = false;
   final WebSocketService _webSocketService = WebSocketService();
+  late final VoiceService _voiceService;
   late final DeviceService _deviceService;
   late final ScreenShareService _screenShareService;
   late final CameraService _cameraService;
@@ -61,6 +64,7 @@ class MainScreenState extends State<MainScreen> {
     final token = config?.token;
 
     _deviceService = DeviceService(_webSocketService, baseUrl: baseUrl, token: token);
+    _voiceService = VoiceService(_webSocketService);
     _screenShareService = ScreenShareService(_webSocketService);
     _cameraService = CameraService(_webSocketService, baseUrl: baseUrl);
     _wearableService = WearableService(_webSocketService, baseUrl: baseUrl);
@@ -80,6 +84,7 @@ class MainScreenState extends State<MainScreen> {
   void dispose() {
     _webSocketService.send({'type': 'farewell'});
     _webSocketService.dispose();
+    _voiceService.dispose();
     _deviceService.dispose();
     _screenShareService.dispose();
     _cameraService.dispose();
@@ -108,13 +113,13 @@ class MainScreenState extends State<MainScreen> {
     }
     switch (_currentIndex) {
       case 0:
-        return HomeScreen(webSocketService: _webSocketService);
+        return HomeScreen(webSocketService: _webSocketService, voiceService: _voiceService);
       case 1:
         return HealthScreen(wearableService: _wearableService);
       case 2:
         return DevicesScreen(deviceService: _deviceService);
       default:
-        return HomeScreen(webSocketService: _webSocketService);
+        return HomeScreen(webSocketService: _webSocketService, voiceService: _voiceService);
     }
   }
 

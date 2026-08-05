@@ -5,9 +5,10 @@ import 'package:window_manager/window_manager.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/main_screen.dart';
 import 'services/server_config.dart';
+import 'utils/theme.dart';
 
-const _bg = Color(0xFF080818);
-const _hud = Color(0xFF00e5ff);
+const _bg = AppTheme.bg;
+const _hud = AppTheme.hud;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -4,14 +4,15 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import '../services/system_service.dart';
 import 'main_screen.dart';
+import '../utils/theme.dart';
 
-const Color _void = Color(0xFF06080d);
-const Color _hud = Color(0xFF00e5ff);
-const Color _panel = Color(0xFF0d1117);
-const Color _text = Color(0xFFc9d1d9);
-const Color _textDim = Color(0xFF6e7681);
-const Color _danger = Color(0xFFf85149);
-const Color _success = Color(0xFF3fb950);
+const Color _void = AppTheme.bg;
+const Color _hud = AppTheme.hud;
+const Color _panel = AppTheme.panel;
+const Color _text = AppTheme.text;
+const Color _textDim = AppTheme.textDim;
+const Color _danger = AppTheme.accentRed;
+const Color _success = AppTheme.accentGreen;
 
 class SpecsCheckScreen extends StatefulWidget {
   const SpecsCheckScreen({super.key});
