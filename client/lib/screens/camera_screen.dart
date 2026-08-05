@@ -4,6 +4,10 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../services/camera_service.dart';
 import '../services/vision_service.dart';
+import '../utils/theme.dart';
+
+const _bg = AppTheme.bg;
+const _panel = AppTheme.panel;
 
 class CameraScreen extends StatefulWidget {
   final CameraService cameraService;
@@ -174,7 +178,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF0a0a1a),
+      backgroundColor: _bg,
       body: _isFullscreen ? _buildFullscreenView() : _buildMainView(),
     );
   }
@@ -273,7 +277,7 @@ class _CameraScreenState extends State<CameraScreen> {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Color(0xFF1a1a2e),
+        color: _panel,
         borderRadius: BorderRadius.circular(16),
       ),
       child: _selectedCamera == null
@@ -398,7 +402,7 @@ class _CameraScreenState extends State<CameraScreen> {
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color(0xFF1a1a2e),
+        color: _panel,
         borderRadius: BorderRadius.circular(12),
         border: result.alerts.isNotEmpty
             ? Border.all(color: Colors.orange.withValues(alpha: 0.5))
@@ -518,7 +522,7 @@ class _CameraScreenState extends State<CameraScreen> {
         decoration: BoxDecoration(
           color: isSelected
               ? Colors.cyan.withValues(alpha: 0.2)
-              : Color(0xFF1a1a2e),
+              : _panel,
           borderRadius: BorderRadius.circular(12),
           border: isSelected
               ? Border.all(color: Colors.cyan, width: 1)
@@ -656,7 +660,7 @@ class _CameraScreenState extends State<CameraScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Color(0xFF1a1a2e),
+        backgroundColor: _panel,
         title: Row(
           children: [
             Icon(Icons.question_answer, color: Colors.cyan, size: 20),

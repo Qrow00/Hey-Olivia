@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import '../services/websocket_service.dart';
 import '../services/monitoring_service.dart';
+import '../utils/theme.dart';
+
+const _bg = AppTheme.bg;
+const _panel = AppTheme.panel;
 
 class MonitoringScreen extends StatefulWidget {
   final WebSocketService webSocketService;
@@ -21,6 +25,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
   StreamSubscription? _snapshotSub;
   StreamSubscription? _alertSub;
+  StreamSubscription? _newAlertSub;
   StreamSubscription? _processSub;
   StreamSubscription? _activitySub;
 
@@ -42,6 +47,9 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     _alertSub = _monitoringService.alerts.listen((alerts) {
       if (mounted) setState(() => _alerts = alerts);
     });
+    _newAlertSub = _monitoringService.newAlerts.listen((alert) {
+      if (mounted) _showAlertBanner(alert);
+    });
     _processSub = _monitoringService.processes.listen((procs) {
       if (mounted) setState(() => _processes = procs);
     });
@@ -50,11 +58,31 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     });
   }
 
+  void _showAlertBanner(AlertData alert) {
+    final isCritical = alert.severity == 'critical';
+    final color = isCritical ? Colors.red : Colors.orange;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(isCritical ? Icons.error : Icons.warning, color: color, size: 20),
+            SizedBox(width: 8),
+            Expanded(child: Text(alert.message, style: TextStyle(color: Colors.white, fontSize: 13))),
+          ],
+        ),
+        backgroundColor: _panel,
+        duration: Duration(seconds: 6),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _monitoringService.stopAutoRefresh();
     _snapshotSub?.cancel();
     _alertSub?.cancel();
+    _newAlertSub?.cancel();
     _processSub?.cancel();
     _activitySub?.cancel();
     _monitoringService.dispose();
@@ -64,9 +92,9 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF0a0a1a),
+      backgroundColor: _bg,
       appBar: AppBar(
-        backgroundColor: Color(0xFF1a1a2e),
+        backgroundColor: _panel,
         title: Row(
           children: [
             Icon(Icons.monitor_heart, color: Colors.cyan, size: 20),
@@ -97,7 +125,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   Widget _buildTabBar() {
     final tabs = ['Overview', 'Processes', 'Activity', 'Alerts'];
     return Container(
-      color: Color(0xFF1a1a2e),
+      color: _panel,
       child: Row(
         children: List.generate(tabs.length, (i) {
           final isSelected = _selectedTab == i;
@@ -171,7 +199,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
   Widget _buildSystemHealthCard() {
     return Card(
-      color: Color(0xFF1a1a2e),
+      color: _panel,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
@@ -218,7 +246,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
   Widget _buildGpuCard() {
     return Card(
-      color: Color(0xFF1a1a2e),
+      color: _panel,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: Colors.purple.withAlpha(80)),
@@ -256,7 +284,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
   Widget _buildNetworkCard() {
     return Card(
-      color: Color(0xFF1a1a2e),
+      color: _panel,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: Colors.blue.withAlpha(80)),
@@ -300,7 +328,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
   Widget _buildQuickStats() {
     return Card(
-      color: Color(0xFF1a1a2e),
+      color: _panel,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: Colors.white.withAlpha(30)),
@@ -385,7 +413,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
       itemBuilder: (context, i) {
         final p = _processes[i];
         return Card(
-          color: Color(0xFF1a1a2e),
+          color: _panel,
           margin: EdgeInsets.only(bottom: 6),
           child: ListTile(
             leading: CircleAvatar(
@@ -422,7 +450,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
       itemBuilder: (context, i) {
         final a = _activity[_activity.length - 1 - i];
         return Card(
-          color: Color(0xFF1a1a2e),
+          color: _panel,
           margin: EdgeInsets.only(bottom: 6),
           child: ListTile(
             leading: Icon(
@@ -462,7 +490,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
         final isCritical = a.severity == 'critical';
         final color = isCritical ? Colors.red : Colors.orange;
         return Card(
-          color: Color(0xFF1a1a2e),
+          color: _panel,
           margin: EdgeInsets.only(bottom: 6),
           shape: RoundedRectangleBorder(
             side: BorderSide(color: color.withAlpha(80)),

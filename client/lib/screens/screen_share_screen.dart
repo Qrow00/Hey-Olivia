@@ -3,6 +3,10 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../services/screen_share_service.dart';
+import '../utils/theme.dart';
+
+const _bg = AppTheme.bg;
+const _panel = AppTheme.panel;
 
 class ScreenShareScreen extends StatefulWidget {
   final ScreenShareService? screenShareService;
@@ -120,7 +124,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: Color(0xFF1a1a2e),
+          backgroundColor: _panel,
           title: Text('Screen Capture Settings', style: TextStyle(color: Colors.cyan)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -202,10 +206,10 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF0a0a1a),
+      backgroundColor: _bg,
       appBar: AppBar(
         title: Text('Screen Share'),
-        backgroundColor: Color(0xFF1a1a2e),
+        backgroundColor: _panel,
         actions: [
           if (_viewerCount > 0)
             Padding(
@@ -238,7 +242,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
   Widget _buildControlBar() {
     return Container(
       padding: EdgeInsets.all(16),
-      color: Color(0xFF1a1a2e),
+      color: _panel,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
@@ -394,7 +398,7 @@ class _ScreenShareScreenState extends State<ScreenShareScreen> {
   Widget _buildAnalysisPanel() {
     return Container(
       padding: EdgeInsets.all(16),
-      color: Color(0xFF1a1a2e),
+      color: _panel,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,

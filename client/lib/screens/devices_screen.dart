@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import '../widgets/device_card.dart';
 import '../models/device.dart';
 import '../services/device_service.dart';
+import '../utils/theme.dart';
+
+const _bg = AppTheme.bg;
+const _panel = AppTheme.panel;
 
 class DevicesScreen extends StatefulWidget {
   final DeviceService? deviceService;
@@ -64,10 +68,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF0a0a1a),
+      backgroundColor: _bg,
       appBar: AppBar(
         title: Text('Devices'),
-        backgroundColor: Color(0xFF1a1a2e),
+        backgroundColor: _panel,
         actions: [
           IconButton(
             icon: Icon(Icons.refresh),
@@ -92,7 +96,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   Widget _buildSummaryBar() {
     return Container(
       padding: EdgeInsets.all(16),
-      color: Color(0xFF1a1a2e),
+      color: _panel,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
@@ -217,7 +221,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   void _showDeviceDetails(Device device) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Color(0xFF1a1a2e),
+      backgroundColor: _panel,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -312,7 +316,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: Color(0xFF1a1a2e),
+          backgroundColor: _panel,
           title: Text('Add Device', style: TextStyle(color: Colors.cyan)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -334,7 +338,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
               SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: selectedType,
-                dropdownColor: Color(0xFF1a1a2e),
+                dropdownColor: _panel,
                 style: TextStyle(color: Colors.white),
                 decoration: InputDecoration(
                   labelText: 'Type',
@@ -354,7 +358,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
               SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: selectedPlatform,
-                dropdownColor: Color(0xFF1a1a2e),
+                dropdownColor: _panel,
                 style: TextStyle(color: Colors.white),
                 decoration: InputDecoration(
                   labelText: 'Platform',
@@ -401,7 +405,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Color(0xFF1a1a2e),
+        backgroundColor: _panel,
         title: Text('Remove Device', style: TextStyle(color: Colors.red)),
         content: Text(
           'Remove ${device.name}?',

@@ -6,6 +6,10 @@ import '../services/voice_service.dart';
 import '../services/settings_service.dart';
 import '../services/server_config.dart';
 import 'specs_check_screen.dart';
+import '../utils/theme.dart';
+
+const _bg = AppTheme.bg;
+const _panel = AppTheme.panel;
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -118,7 +122,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF0a0a1a),
+      backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -268,7 +272,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: Color(0xFF1a1a2e),
+            color: _panel,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(children: children),
@@ -343,7 +347,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showDevicePicker(String title, List<String> devices, String current, ValueChanged<String> onSelected) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Color(0xFF1a1a2e),
+      backgroundColor: _panel,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) => Container(
         padding: EdgeInsets.all(24),
@@ -397,7 +401,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     showModalBottomSheet(
       context: context,
-      backgroundColor: Color(0xFF1a1a2e),
+      backgroundColor: _panel,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) => Container(
         padding: EdgeInsets.all(24),
@@ -435,7 +439,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final models = ['llama3.2', 'phi4-mini', 'gemma4:e2b', 'llama3.1', 'llava:7b', 'mistral', 'codellama'];
     showModalBottomSheet(
       context: context,
-      backgroundColor: Color(0xFF1a1a2e),
+      backgroundColor: _panel,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) => Container(
         padding: EdgeInsets.all(24),
@@ -468,7 +472,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Color(0xFF1a1a2e),
+        backgroundColor: _panel,
         title: Text('MQTT Configuration', style: TextStyle(color: Colors.cyan)),
         content: SingleChildScrollView(
           child: Column(

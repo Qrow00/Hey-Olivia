@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/device.dart';
+import '../utils/theme.dart';
+
+const _panel = AppTheme.panel;
 
 class DeviceCard extends StatelessWidget {
   final Device device;
@@ -60,7 +63,7 @@ class DeviceCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Card(
-        color: Color(0xFF1a1a2e),
+        color: _panel,
         child: Padding(
           padding: EdgeInsets.all(16),
           child: Column(

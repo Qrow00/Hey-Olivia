@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import '../utils/theme.dart';
 
 class CompactAvatarWidget extends StatefulWidget {
   final String currentState;
@@ -80,16 +81,7 @@ class _CompactAvatarPainter extends CustomPainter {
 
   _CompactAvatarPainter({required this.progress, required this.state});
 
-  Color get _color {
-    switch (state) {
-      case 'idle': return Color(0xFF00D4FF);
-      case 'listening': return Color(0xFF00FF88);
-      case 'thinking': return Color(0xFFFFAA00);
-      case 'speaking': return Color(0xFF00FFFF);
-      case 'error': return Color(0xFFFF4444);
-      default: return Color(0xFF00D4FF);
-    }
-  }
+  Color get _color => AppTheme.phaseColor(state);
 
   double get _speed {
     switch (state) {

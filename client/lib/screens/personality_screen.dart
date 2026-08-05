@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/personality_service.dart';
 import '../services/server_config.dart';
+import '../utils/theme.dart';
+
+const _bg = AppTheme.bg;
 
 class PersonalityScreen extends StatefulWidget {
   @override
@@ -42,7 +45,7 @@ class _PersonalityScreenState extends State<PersonalityScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF0a0a1a),
+      backgroundColor: _bg,
       appBar: AppBar(
         title: Text('Personality', style: TextStyle(color: Colors.cyan)),
         backgroundColor: Colors.transparent,

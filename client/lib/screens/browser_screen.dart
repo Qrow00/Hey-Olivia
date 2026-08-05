@@ -2,6 +2,10 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../services/browser_service.dart';
+import '../utils/theme.dart';
+
+const _bg = AppTheme.bg;
+const _panel = AppTheme.panel;
 
 class BrowserScreen extends StatefulWidget {
   final BrowserService? browserService;
@@ -168,9 +172,9 @@ class _BrowserScreenState extends State<BrowserScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF0a0a1a),
+      backgroundColor: _bg,
       appBar: AppBar(
-        backgroundColor: Color(0xFF1a1a2e),
+        backgroundColor: _panel,
         title: Text(
           'Browser',
           style: TextStyle(color: Colors.cyan),
@@ -195,7 +199,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
           // URL Bar
           Container(
             padding: EdgeInsets.all(8),
-            color: Color(0xFF1a1a2e),
+            color: _panel,
             child: Row(
               children: [
                 Expanded(
@@ -239,7 +243,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
           // Search Bar
           Container(
             padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            color: Color(0xFF1a1a2e),
+            color: _panel,
             child: Row(
               children: [
                 Expanded(
@@ -273,7 +277,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
           // Navigation Controls
           Container(
             padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            color: Color(0xFF1a1a2e),
+            color: _panel,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
