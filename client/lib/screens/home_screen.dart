@@ -6,19 +6,21 @@ import '../services/settings_service.dart';
 import '../services/websocket_service.dart';
 import '../services/voice_service.dart';
 import '../utils/responsive.dart';
+import '../utils/theme.dart';
 
-const _bg = Color(0xFF080818);
-const _panel = Color(0xFF10102a);
-const _hud = Color(0xFF00e5ff);
-const _hudDim = Color(0xFF0077b6);
-const _text = Color(0xFFE0E0E0);
-const _textDim = Color(0xFF6e7681);
-const _danger = Color(0xFFFF6D00);
-const _success = Color(0xFF00C853);
+const _bg = AppTheme.bg;
+const _panel = AppTheme.panel;
+const _hud = AppTheme.hud;
+const _hudDim = AppTheme.hudDim;
+const _text = AppTheme.text;
+const _textDim = AppTheme.textDim;
+const _danger = AppTheme.accentAmber;
+const _success = AppTheme.accentGreen;
 
 class HomeScreen extends StatefulWidget {
   final WebSocketService webSocketService;
-  const HomeScreen({super.key, required this.webSocketService});
+  final VoiceService voiceService;
+  const HomeScreen({super.key, required this.webSocketService, required this.voiceService});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -53,7 +55,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _voiceService = VoiceService(widget.webSocketService);
+    _voiceService = widget.voiceService;
+    _wakeWordMode = _voiceService.isListening;
     _loadSettings();
     _setupListeners();
     _setupConnectionWatch();
@@ -197,7 +200,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _phaseSubscription?.cancel();
     _messageSubscription?.cancel();
     _ttsDoneSubscription?.cancel();
-    _voiceService.dispose();
     _chatController.dispose();
     _chatScrollController.dispose();
     super.dispose();
@@ -254,9 +256,25 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: EdgeInsets.symmetric(horizontal: 16),
       child: AspectRatio(
         aspectRatio: 1,
-        child: AvatarWidget(
-          currentState: _avatarState,
-          wordPulse: _wordPulse,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppTheme.hud.withValues(alpha: 0.08),
+                    AppTheme.hud.withValues(alpha: 0.0),
+                  ],
+                ),
+              ),
+            ),
+            AvatarWidget(
+              currentState: _avatarState,
+              wordPulse: _wordPulse,
+            ),
+          ],
         ),
       ),
     );
