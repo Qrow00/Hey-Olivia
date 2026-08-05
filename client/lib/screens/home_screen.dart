@@ -259,14 +259,16 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AppTheme.hud.withValues(alpha: 0.08),
-                    AppTheme.hud.withValues(alpha: 0.0),
-                  ],
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppTheme.hud.withValues(alpha: 0.08),
+                      AppTheme.hud.withValues(alpha: 0.0),
+                    ],
+                  ),
                 ),
               ),
             ),
