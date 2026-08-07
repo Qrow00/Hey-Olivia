@@ -44,8 +44,21 @@ app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 
 
+def _startup_log(msg: str):
+    print(f"[STARTUP] {msg}", flush=True)
+
+
 @app.on_event("startup")
 async def startup():
+    # First import of torch._C (libtorch DLL chain) can segfault on the main
+    # thread when run concurrently with the subprocess/socket threads spawned
+    # later in startup. Preload it here while the process is still quiet.
+    try:
+        import torch  # noqa: F401
+    except Exception as e:
+        print(f"[PRELOAD] torch unavailable: {e}", flush=True)
+
+    _startup_log("database init...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         from sqlalchemy import text
@@ -53,11 +66,13 @@ async def startup():
             await conn.execute(text("ALTER TABLE wearable_devices ADD COLUMN user_id VARCHAR DEFAULT 'default'"))
         except:
             pass
+    _startup_log("database ok")
 
     if service_enabled("plugins"):
         from app.plugins.manager import plugin_manager
         from app.plugins.motion_detector import MotionDetectorPlugin
         await plugin_manager.register_plugin(MotionDetectorPlugin())
+    _startup_log("plugins ok")
 
     if service_enabled("browser"):
         from app.services.hermes_browser import hermes_browser
@@ -71,16 +86,20 @@ async def startup():
         asyncio.create_task(_init_browser())
 
     if service_enabled("monitoring"):
+        _startup_log("monitoring start...")
         from app.services.monitoring_service import monitoring_service
         from app.services.activity_logger import activity_logger
         await monitoring_service.start_polling()
         await activity_logger.start_polling()
+        _startup_log("monitoring ok")
 
         from app.routers.websocket import _setup_monitoring_broadcast
         _setup_monitoring_broadcast()
 
+    _startup_log("wearable load...")
     from app.services.wearable_service import wearable_service
     await wearable_service.load_from_db()
+    _startup_log("wearable ok")
 
     from app.services.system_config import system_config_service
     asyncio.create_task(asyncio.to_thread(system_config_service.auto_adapt))
@@ -91,7 +110,7 @@ async def startup():
     from app.services.thermal_logger_service import thermal_logger_service
     thermal_logger_service.start()
 
-    print(f"J.A.R.V.I.S. v2.0.0 initialized — services=[{JARVIS_SERVICES}]")
+    _startup_log(f"J.A.R.V.I.S. v2.0.0 initialized — services=[{JARVIS_SERVICES}]")
 
 
 @app.on_event("shutdown")

@@ -29,6 +29,32 @@ if (Test-Path $detector) {
     }
 }
 
+# Pre-flight: stop any stale process holding port 8000 (leftover reloaders or
+# crashed shells). Without this, uvicorn dies with Errno 10048 and the window
+# closes silently. Note: --reload is intentionally omitted -- watchfiles watches
+# backend/ and reloads on every log/data write (ollama logs, whisper cache),
+# killing the server mid-startup.
+$listener = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
+if ($listener) {
+    $holderPids = $listener.OwningProcess | Sort-Object -Unique
+    foreach ($pid_ in $holderPids) {
+        Write-Host "[BACKEND] Stopping stale process $pid_ holding port 8000..." -ForegroundColor Yellow
+        Stop-Process -Id $pid_ -Force -ErrorAction SilentlyContinue
+    }
+    Start-Sleep 2
+}
+
+# Pre-flight: orphaned llama-server processes survive when ollama is force-killed
+# (Stop-Process on ollama.exe does NOT kill its child llama-server.exe). Each leak
+# holds ~400MB on the GTX 1050; after a few restarts the GPU hits cudaMalloc OOM
+# and the LLM warm-up fails. Kill the whole tree before starting fresh.
+$stale = Get-Process -Name "ollama","llama-server" -ErrorAction SilentlyContinue
+if ($stale) {
+    Write-Host "[BACKEND] Stopping $($stale.Count) stale ollama/llama-server process(es)..." -ForegroundColor Yellow
+    $stale | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep 2
+}
+
 # Start Ollama in background if not already running
 $ollamaProcess = Get-Process -Name "ollama" -ErrorAction SilentlyContinue
 $ollamaExe = "D:\project\Jarvis project\Hey-Olivia\backend\ollama\ollama.exe"
@@ -62,10 +88,10 @@ $env:JARVIS_SERVICES = $Services
 Set-Location "D:\project\Jarvis project\Hey-Olivia\backend"
 
 try {
-    & $backendPy -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    & $backendPy -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 }
 finally {
     Write-Host "[OLLAMA] Stopping..." -ForegroundColor Yellow
-    $null = Stop-Process -Name "ollama" -Force -ErrorAction SilentlyContinue
+    $null = Stop-Process -Name "ollama","llama-server" -Force -ErrorAction SilentlyContinue
     Write-Host "[OLLAMA] Stopped" -ForegroundColor Green
 }
