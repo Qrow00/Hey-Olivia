@@ -1,4 +1,4 @@
-"""RED/GREEN tests for JARVIS V4 intent classifier (pure-python, trainable)."""
+"""RED/GREEN tests for JARVIS V3 intent classifier (pure-python, trainable)."""
 import sys
 import os
 import tempfile

@@ -1,4 +1,4 @@
-"""RED/GREEN tests for JARVIS V4 entity extraction."""
+"""RED/GREEN tests for JARVIS V3 entity extraction."""
 import sys
 import os
 

@@ -1,4 +1,4 @@
-"""RED/GREEN tests for JARVIS V4 chat client."""
+"""RED/GREEN tests for JARVIS V3 chat client."""
 import sys
 import os
 

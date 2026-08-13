@@ -1,4 +1,4 @@
-"""RED/GREEN tests for JARVIS V4 config."""
+"""RED/GREEN tests for JARVIS V3 config."""
 import sys
 import os
 

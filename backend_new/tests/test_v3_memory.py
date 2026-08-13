@@ -1,4 +1,4 @@
-"""RED/GREEN tests for JARVIS V4 memory (profile, vector store, episodic)."""
+"""RED/GREEN tests for JARVIS V3 memory (profile, vector store, episodic)."""
 import sys
 import os
 import tempfile

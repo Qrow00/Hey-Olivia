@@ -1,13 +1,13 @@
-# J.A.R.V.I.S. V4 - Agent Core
+# J.A.R.V.I.S. V3 - Agent Core
 
-A server-based personal assistant: **JARVIS V4** is the LLM-free successor to the V3
+A server-based personal assistant: **JARVIS V3** is the LLM-free successor to the V2
 prototype. It understands commands through a fast pure-Python NLU pipeline, runs
 skills (media, smart home, browser, email, docs, camera, Android/ADB, code
 scaffolding, scheduler, system control), talks to you in a British JARVIS voice,
 and is controlled from a self-contained web UI.
 
 - V3 code is archived under `backend_new/legacy_v3/`.
-- Flutter client sources live under `client_new/` (not wired to V4 yet).
+- Flutter client sources live under `client_new/` (not wired to V3 yet).
 
 ## Quickstart
 

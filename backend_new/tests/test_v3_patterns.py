@@ -1,4 +1,4 @@
-"""RED/GREEN tests for JARVIS V4 fast-path patterns."""
+"""RED/GREEN tests for JARVIS V3 fast-path patterns."""
 import sys
 import os
 

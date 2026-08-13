@@ -1,4 +1,4 @@
-"""RED/GREEN tests for JARVIS V4 vision (face db, recognizer graceful degrade)."""
+"""RED/GREEN tests for JARVIS V3 vision (face db, recognizer graceful degrade)."""
 import sys
 import os
 import tempfile

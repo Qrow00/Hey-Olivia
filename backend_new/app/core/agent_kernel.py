@@ -1,4 +1,4 @@
-"""AgentKernel - lifecycle and orchestration for J.A.R.V.I.S. V4.
+"""AgentKernel - lifecycle and orchestration for J.A.R.V.I.S. V3.
 
 Replaces V3's AppKernel: instead of fixed plugins, the agent composes
 *skills* (registered intents) plus optional *services* (voice, vision,

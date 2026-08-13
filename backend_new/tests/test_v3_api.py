@@ -1,4 +1,4 @@
-"""RED/GREEN tests for JARVIS V4 API + WebSocket contract."""
+"""RED/GREEN tests for JARVIS V3 API + WebSocket contract."""
 import sys
 import os
 

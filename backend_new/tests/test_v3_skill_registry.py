@@ -1,4 +1,4 @@
-"""RED/GREEN tests for JARVIS V4 skill registry."""
+"""RED/GREEN tests for JARVIS V3 skill registry."""
 import sys
 import os
 

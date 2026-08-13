@@ -1,6 +1,6 @@
 <#>
 .SYNOPSIS
-    Launch J.A.R.V.I.S. V4 (Agent Core) Backend Server
+    Launch J.A.R.V.I.S. V3 (Agent Core) Backend Server
 .DESCRIPTION
     Starts the FastAPI backend: LLM-free NLU command path, optional chat model,
     personality sliders, skills, memory, learner, vision, WebSocket gateway.
@@ -19,20 +19,24 @@ param(
     [string]$ModelPath = "models\Llama-3.2-3B-Instruct-Q4_K_M.gguf"
 )
 
-# Set environment variables
+# Self-locate: make the project root the working directory regardless of how
+# this script is launched (Start-Process, Task Scheduler, WMI, etc).
+Set-Location -LiteralPath $PSScriptRoot
 $env:JARVIS_SERVICES = $Services
-$env:PYTHONPATH = "$PWD\backend_new;$env:PYTHONPATH"
+$env:JARVIS_USE_LLAMA_SERVER = "1"
+$env:JARVIS_CHAT_API = "http://127.0.0.1:8080/v1"
+$env:PYTHONPATH = "$PSScriptRoot\backend_new;$env:PYTHONPATH"
 
 # Add scripts to PATH
 $env:PATH += ";$env:APPDATA\Python\Python314\Scripts"
 
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "  J.A.R.V.I.S. V4 - Agent Core Launcher" -ForegroundColor Cyan
+Write-Host "  J.A.R.V.I.S. V3 - Agent Core Launcher" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "Services: $Services" -ForegroundColor Green
 Write-Host "Port: $Port" -ForegroundColor Green
 Write-Host "Model: $ModelPath" -ForegroundColor Green
-Write-Host "Working Dir: $PWD\backend_new" -ForegroundColor Green
+Write-Host "Working Dir: $PSScriptRoot\backend_new" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor Cyan
 
 # Check if model exists

@@ -1,4 +1,4 @@
-"""J.A.R.V.I.S. V4 (Agent Core) - FastAPI application entry point.
+"""J.A.R.V.I.S. V3 (Agent Core) - FastAPI application entry point.
 
 Replaces V3's main_new.py:
   - LLM-free NLU command path (regex -> classifier -> chat)
@@ -38,12 +38,13 @@ class AgentContext:
     chat: ChatClient
     profile: Any
     state_store: Optional[StateStore] = None
+    learner: Any = None
 
 
 def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        print("J.A.R.V.I.S. V4 starting up...")
+        print("J.A.R.V.I.S. V3 starting up...")
         cfg = Config()
         cfg.ensure_dirs()
 
@@ -55,14 +56,28 @@ def create_app() -> FastAPI:
 
         personality = Personality(state_store, cfg.profile)
         profile = kernel.get_service("profile")
-        nlu = NLUPipeline()
+        nlu = NLUPipeline(model_path=str(cfg.data_dir / "intent_classifier.json"))
         chat = ChatClient(cfg, personality)
+
+        from app.learner.auto_learn import MistakeLearner
+        from app.learner.retrain_job import RetrainJob
+
+        fb_store = kernel.get_service("feedback")
+        retrain_job = None
+        if fb_store is not None:
+            retrain_job = RetrainJob(cfg, fb_store,
+                                     str(cfg.data_dir / "intent_classifier.json"))
+            retrain_job.start()
+            print("[Learner] background retrain job started.")
+
+        learner = MistakeLearner(fb_store, nlu, cfg) if fb_store else None
 
         app.state.ctx = AgentContext(
             cfg=cfg, kernel=kernel, personality=personality,
             nlu=nlu, chat=chat, profile=profile, state_store=state_store,
+            learner=learner,
         )
-        print(f"J.A.R.V.I.S. V4 ready. {len(kernel.registry.names())} skills registered.")
+        print(f"J.A.R.V.I.S. V3 ready. {len(kernel.registry.names())} skills registered.")
 
         from app.api.ws import manager
         from app.skills.scheduler import scheduler_watchdog
@@ -75,12 +90,14 @@ def create_app() -> FastAPI:
             yield
         finally:
             watchdog.cancel()
+            if retrain_job is not None:
+                await retrain_job.stop()
             ctx = app.state.ctx
             if ctx is not None:
                 await ctx.kernel.shutdown()
-            print("J.A.R.V.I.S. V4 shutdown complete")
+            print("J.A.R.V.I.S. V3 shutdown complete")
 
-    app = FastAPI(title="J.A.R.V.I.S. V4 - Agent Core", version=VERSION, lifespan=lifespan)
+    app = FastAPI(title="J.A.R.V.I.S. V3 - Agent Core", version=VERSION, lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

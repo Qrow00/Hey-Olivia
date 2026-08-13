@@ -1,4 +1,4 @@
-"""RED/GREEN tests for JARVIS V4 personality (emotional sliders)."""
+"""RED/GREEN tests for JARVIS V3 personality (emotional sliders)."""
 import sys
 import os
 

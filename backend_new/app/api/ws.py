@@ -1,4 +1,4 @@
-"""WebSocket gateway for J.A.R.V.I.S. V4.
+"""WebSocket gateway for J.A.R.V.I.S. V3.
 
 Transport-compatible with V3 (text_command/voice_chunk/settings_update/
 plugin_control/switch_profile/knowledge_search) plus new types:
@@ -106,6 +106,11 @@ async def handle_message(websocket: WebSocket, data: Dict[str, Any]) -> None:
     elif msg_type == "teach_example":
         if ctx is not None:
             ok = await ctx.nlu.teach(data.get("text", ""), data.get("intent", ""))
+            if ok:
+                store = ctx.kernel.get_service("feedback")
+                if store is not None:
+                    await store.record(data.get("text", ""), data.get("intent", ""),
+                                       "teach", note="explicit teach")
             await manager.send(websocket, {"type": "teach_result", "success": ok})
 
     elif msg_type == "feedback":

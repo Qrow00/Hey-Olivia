@@ -1,4 +1,4 @@
-"""Central configuration for J.A.R.V.I.S. V4 (Agent Core).
+"""Central configuration for J.A.R.V.I.S. V3 (Agent Core).
 
 All settings are overridable via environment variables. Heavy optional
 dependencies are never imported here so the core always runs.
@@ -41,7 +41,7 @@ class Config:
     def __init__(self):
         self.host = _env("JARVIS_HOST", "0.0.0.0")
         self.port = _env("JARVIS_PORT", 8000)
-        self.db_path = _env("JARVIS_DB_PATH", str(BASE_DIR / "jarvis_v4.db"))
+        self.db_path = _env("JARVIS_DB_PATH", str(BASE_DIR / "jarvis_v3.db"))
         self.data_dir = Path(_env("JARVIS_DATA_DIR", str(BASE_DIR / "data")))
         self.models_dir = Path(_env("JARVIS_MODELS_DIR", str(BASE_DIR / "models")))
 
@@ -69,6 +69,17 @@ class Config:
         self.stt_model_size = _env("JARVIS_STT_MODEL", "small")
         self.vad_threshold = _env("JARVIS_VAD_THRESHOLD", 0.5)
         self.tts_voice_default = _env("JARVIS_TTS_VOICE", "en-GB-RyanNeural")
+        self.tts_provider = _env("JARVIS_TTS_PROVIDER", "piper")
+        self.tts_piper_model = _env(
+            "JARVIS_TTS_PIPER_MODEL", str(self.models_dir / "piper" / "en_GB-alan-medium.onnx")
+        )
+        self.tts_kokoro_voice = _env("JARVIS_TTS_KOKORO_VOICE", "bm_george")
+        self.tts_kokoro_model = _env(
+            "JARVIS_TTS_KOKORO_MODEL", str(self.models_dir / "kokoro" / "kokoro-v1.0.onnx")
+        )
+        self.tts_kokoro_voices = _env(
+            "JARVIS_TTS_KOKORO_VOICES", str(self.models_dir / "kokoro" / "voices-v1.0.bin")
+        )
 
         # Vision
         self.yunet_model = _env("JARVIS_YUNET_MODEL", str(self.models_dir / "yunet.onnx"))
@@ -79,8 +90,8 @@ class Config:
 
         # Memory / learner
         self.conv_history_size = _env("JARVIS_CONV_HISTORY", 8)
-        self.retrain_interval_s = _env("JARVIS_RETRAIN_INTERVAL", 3600)
-        self.retrain_min_samples = _env("JARVIS_RETRAIN_MIN_SAMPLES", 20)
+        self.retrain_interval_s = _env("JARVIS_RETRAIN_INTERVAL", 300)
+        self.retrain_min_samples = _env("JARVIS_RETRAIN_MIN_SAMPLES", 5)
 
         self.profile = _env("JARVIS_PROFILE", "default")
 

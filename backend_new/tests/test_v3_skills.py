@@ -1,4 +1,4 @@
-"""RED/GREEN tests for JARVIS V4 skills."""
+"""RED/GREEN tests for JARVIS V3 skills."""
 import sys
 import os
 import asyncio

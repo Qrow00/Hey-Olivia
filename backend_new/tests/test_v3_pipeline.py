@@ -1,4 +1,4 @@
-"""RED/GREEN tests for JARVIS V4 NLU pipeline (regex -> classifier -> chat)."""
+"""RED/GREEN tests for JARVIS V3 NLU pipeline (regex -> classifier -> chat)."""
 import sys
 import os
 

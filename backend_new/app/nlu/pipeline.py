@@ -9,6 +9,7 @@ Entities are extracted deterministically in both command paths.
 """
 
 import asyncio
+import os
 from typing import Dict, List, Optional, Tuple
 
 from app.nlu.entity_extractor import extract_entities
@@ -20,10 +21,23 @@ from app.nlu.training_data import SEED_INTENTS
 class NLUPipeline:
     """Command interpretation: regex fast-path -> classifier -> chat."""
 
-    def __init__(self, classifier: Optional[IntentClassifier] = None):
-        self.classifier = classifier or IntentClassifier()
-        if not classifier:
-            self.classifier.train(SEED_INTENTS)
+    def __init__(self, classifier: Optional[IntentClassifier] = None,
+                 model_path: Optional[str] = None):
+        self.model_path = model_path
+        if classifier is not None:
+            self.classifier = classifier
+        else:
+            self.classifier = IntentClassifier()
+            if model_path and os.path.exists(model_path):
+                try:
+                    self.classifier.load(model_path)
+                    print(f"[NLU] Loaded classifier from {model_path} "
+                          f"({self.classifier.example_count} examples).")
+                except Exception as e:
+                    print(f"[NLU] Classifier load failed ({e}); training from seeds.")
+                    self.classifier.train(SEED_INTENTS)
+            else:
+                self.classifier.train(SEED_INTENTS)
         self._teach_buffer: List[Tuple[str, str]] = []
 
     async def process(self, text: str) -> Dict[str, object]:
@@ -60,7 +74,16 @@ class NLUPipeline:
         self.classifier.add_example(text, intent)
         self.classifier.train()
         self._teach_buffer.append((text, intent))
+        self.save()
         return True
+
+    def save(self) -> None:
+        """Persist the classifier so learned lessons survive a restart."""
+        if self.model_path:
+            try:
+                self.classifier.save(self.model_path)
+            except Exception as e:
+                print(f"[NLU] Classifier save failed: {e}")
 
     def buffered_teaches(self) -> List[Tuple[str, str]]:
         return list(self._teach_buffer)

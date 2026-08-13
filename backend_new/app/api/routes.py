@@ -1,4 +1,4 @@
-"""REST routes for J.A.R.V.I.S. V4."""
+"""REST routes for J.A.R.V.I.S. V3."""
 
 from typing import Any, Dict, Optional
 
@@ -39,7 +39,7 @@ def build_router(process_text) -> APIRouter:
             if web.exists():
                 return HTMLResponse(web.read_text(encoding="utf-8"))
         return {
-            "name": "J.A.R.V.I.S. V4 - Agent Core",
+            "name": "J.A.R.V.I.S. V3 - Agent Core",
             "version": "4.0.0",
             "status": "operational",
             "description": "LLM-free command pipeline + local chat model + skills",
@@ -97,14 +97,14 @@ def build_router(process_text) -> APIRouter:
         if svc is None or not svc.available():
             return {
                 "success": False, "audio_base64": "", "voice": "unavailable",
-                "narration": "TTS not available (install edge-tts and enable voice service).",
+                "narration": "TTS not available (install edge-tts or Kokoro and enable the voice service).",
             }
         import base64
         audio = await svc.synthesize(text, ctx.personality.tts_params())
         return {
             "success": bool(audio),
             "audio_base64": base64.b64encode(audio).decode() if audio else "",
-            "voice": ctx.personality.tts_params().get("voice"),
+            "voice": svc.info().get("voice"),
         }
 
     @router.get("/faces")
@@ -135,6 +135,10 @@ def build_router(process_text) -> APIRouter:
             return {"success": False}
         text, intent = payload.get("text", ""), payload.get("intent", "")
         ok = await ctx.nlu.teach(text, intent)
+        if ok:
+            store = ctx.kernel.get_service("feedback")
+            if store is not None:
+                await store.record(text, intent, "teach", note="explicit teach")
         return {"success": ok, "narration": f"Learned '{text}' -> {intent}." if ok else "Teach failed."}
 
     @router.post("/feedback")

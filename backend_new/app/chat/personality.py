@@ -114,7 +114,9 @@ class Personality:
             "voice": voice,
             "rate": round(0.92 + energy * 0.3, 2),
             "pitch": round(-0.05 + sarcasm * 0.1, 3),
-            "volume": "+0%",
+            "energy": energy,
+            "sarcasm": sarcasm,
+            "volume": round(1.0 + (energy - 0.5) * 0.15, 3),
         }
 
     # --- fallback replies (no model loaded) ---------------------------------
