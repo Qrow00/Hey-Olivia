@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J.A.R.V.I.S. V4 - Agent Core</title>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --panel: #11161f;
+    --panel2: #161d29;
+    --line: #232c3b;
+    --text: #d7e2ee;
+    --dim: #7d8ea3;
+    --accent: #4fd8ff;
+    --accent-dim: #1c5a6e;
+    --ok: #34d399;
+    --warn: #fbbf24;
+    --err: #f87171;
+    --user: #2a5c6e;
+    --sys: #1d2533;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Consolas", "Cascadia Mono", monospace;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #0d1420, var(--bg));
+  }
+  .logo { font-size: 20px; letter-spacing: 4px; color: var(--accent); font-weight: 700; }
+  .logo span { color: var(--dim); font-weight: 400; }
+  .spacer { flex: 1; }
+  .badge {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--panel2);
+    color: var(--dim);
+  }
+  .badge.on { color: var(--ok); border-color: var(--ok); }
+  .badge.off { color: var(--err); border-color: var(--err); }
+  main { flex: 1; display: flex; min-height: 0; }
+  .chat-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .msg {
+    max-width: 78%;
+    padding: 9px 13px;
+    border-radius: 10px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 13.5px;
+  }
+  .msg.user { align-self: flex-end; background: var(--user); color: #dff3fb; }
+  .msg.jarvis { align-self: flex-start; background: var(--sys); color: var(--text); border-left: 3px solid var(--accent-dim); }
+  .msg.err { align-self: flex-start; background: #2a1518; color: var(--err); border-left: 3px solid var(--err); }
+  .msg .meta {
+    display: block;
+    font-size: 10.5px;
+    color: var(--dim);
+    margin-top: 5px;
+    letter-spacing: 0.4px;
+  }
+  .composer {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+  }
+  #input {
+    flex: 1;
+    resize: none;
+    height: 54px;
+    padding: 10px 12px;
+    background: var(--panel2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+  }
+  #input:focus { border-color: var(--accent); }
+  .btn {
+    padding: 8px 16px;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent-dim);
+    border-radius: 8px;
+    color: #bfefff;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn:hover { filter: brightness(1.2); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #06222e; font-weight: 700; }
+  .btn.mic { background: var(--panel2); border-color: var(--line); color: var(--dim); }
+  .btn.mic.rec { background: #5a1d20; border-color: var(--err); color: var(--err); }
+  .side-panel {
+    width: 330px;
+    border-left: 1px solid var(--line);
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  nav.tabs { display: flex; border-bottom: 1px solid var(--line); }
+  nav.tabs button {
+    flex: 1;
+    padding: 10px 0;
+    background: none;
+    border: none;
+    color: var(--dim);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+  }
+  nav.tabs button.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
+  .tab-body { flex: 1; overflow-y: auto; padding: 14px; }
+  .tab-body h3 { margin: 0 0 12px; font-size: 13px; color: var(--dim); letter-spacing: 1px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 11.5px; color: var(--dim); margin-bottom: 4px; letter-spacing: 0.5px; }
+  .field input, .field textarea, .field select {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--panel2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+  }
+  .field textarea { resize: vertical; min-height: 60px; }
+  .field input:focus, .field textarea:focus { border-color: var(--accent); }
+  .slider-row { margin-bottom: 14px; }
+  .slider-row .top { display: flex; justify-content: space-between; font-size: 12px; color: var(--text); }
+  .slider-row .top .val { color: var(--accent); }
+  .slider-row input[type=range] { width: 100%; accent-color: var(--accent); }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+  .presets .btn { padding: 5px 10px; font-size: 11px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips .chip {
+    font-size: 11.5px;
+    padding: 4px 9px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel2);
+    color: var(--dim);
+  }
+  .hint { font-size: 11.5px; color: var(--dim); line-height: 1.5; }
+  .kv { font-size: 12px; line-height: 1.7; }
+  .kv b { color: var(--accent); font-weight: 600; }
+  #statusline { font-size: 12px; padding: 8px 18px; border-top: 1px solid var(--line); color: var(--dim); }
+  ::-webkit-scrollbar { width: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @media (max-width: 820px) {
+    main { flex-direction: column; }
+    .side-panel { width: 100%; border-left: none; border-top: 1px solid var(--line); max-height: 42vh; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">J.A.R.V.I.S.<span> V4</span></div>
+  <div class="spacer"></div>
+  <span id="connBadge" class="badge">connecting</span>
+  <span id="modelBadge" class="badge">model: ...</span>
+</header>
+
+<main>
+  <section class="chat-panel">
+    <div style="display:flex; align-items:center; padding:8px 16px; border-bottom:1px solid var(--line); gap:8px">
+      <span style="font-size:12px; color:var(--dim); letter-spacing:1px">CONVERSATION</span>
+      <div class="spacer"></div>
+      <button id="clearChat" class="btn" style="padding:4px 10px; font-size:11px">CLEAR</button>
+    </div>
+    <div id="messages"></div>    <div class="composer">
+      <button id="speakBtn" class="btn mic">VOICE OFF</button>
+      <button id="voiceBtn" class="btn mic" title="Hold-to-talk is toggle: click to record, click to stop">MIC</button>
+      <textarea id="input" placeholder="Type a command or chat... (Enter to send)"></textarea>
+      <button id="sendBtn" class="btn primary">SEND</button>
+    </div>
+  </section>
+
+  <aside class="side-panel">
+    <nav class="tabs">
+      <button data-tab="quick" class="active">QUICK</button>
+      <button data-tab="personality">PERSONALITY</button>
+      <button data-tab="schedule">SCHEDULE</button>
+      <button data-tab="teach">TEACH</button>
+      <button data-tab="feedback">FEEDBACK</button>
+      <button data-tab="faces">FACES</button>
+      <button data-tab="system">SYSTEM</button>
+    </nav>
+
+    <div class="tab-body" id="tab-quick">
+      <h3>QUICK ACTIONS</h3>
+      <div id="quickGroups"></div>
+    </div>
+
+    <div class="tab-body" id="tab-personality" style="display:none">
+      <h3>EMOTIONAL SLIDERS</h3>
+      <div class="presets">
+        <button class="btn" data-preset="default">Default</button>
+        <button class="btn" data-preset="witty">Witty</button>
+        <button class="btn" data-preset="warm">Warm</button>
+        <button class="btn" data-preset="professional">Professional</button>
+      </div>
+      <div id="sliders"></div>
+    </div>
+
+    <div class="tab-body" id="tab-schedule" style="display:none">
+      <h3>REMINDERS & ALARMS</h3>
+      <div id="scheduleList" class="hint">Loading...</div>
+      <div style="display:flex; gap:8px; margin-top:12px">
+        <button id="scheduleRefresh" class="btn" style="flex:1">REFRESH</button>
+        <button id="scheduleClear" class="btn" style="flex:1">CLEAR ALL</button>
+      </div>
+      <p class="hint" style="margin-top:12px">Say "remind me to buy groceries" or "set an alarm for 7 am". Items persist across restarts.</p>
+    </div>
+
+    <div class="tab-body" id="tab-teach" style="display:none">
+      <h3>TEACH JARVIS A COMMAND</h3>      <div class="field">
+        <label>EXAMPLE PHRASE</label>
+        <input id="teachText" placeholder="e.g. power down the warp core">
+      </div>
+      <div class="field">
+        <label>INTENT</label>
+        <input id="teachIntent" placeholder="e.g. system_shutdown">
+      </div>
+      <button id="teachBtn" class="btn primary" style="width:100%">LEARN</button>
+      <p class="hint" style="margin-top:12px">The classifier re-trains with this example, so the phrase will route to that intent next time. Run <b>python -m pytest</b> after teaching several examples to verify.</p>
+    </div>
+
+    <div class="tab-body" id="tab-feedback" style="display:none">
+      <h3>FEEDBACK / CORRECTION</h3>
+      <div class="field">
+        <label>WHAT YOU SAID</label>
+        <input id="fbText" placeholder="e.g. turn off the lights">
+      </div>
+      <div class="field">
+        <label>INTENT JARVIS USED</label>
+        <input id="fbIntent" placeholder="e.g. smart_home_turn_off">
+      </div>
+      <div class="field">
+        <label>HOW DID IT GO?</label>
+        <select id="fbRating">
+          <option value="good">good</option>
+          <option value="bad">bad</option>
+          <option value="wrong_intent">wrong intent</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>SHOULD IT BE (INTENT)</label>
+        <input id="fbCorrection" placeholder="e.g. smart_home_turn_on">
+      </div>
+      <button id="fbBtn" class="btn primary" style="width:100%">SUBMIT</button>
+      <p class="hint" style="margin-top:12px">Feedback feeds the learner; with enough samples JARVIS retrains and improves itself.</p>
+    </div>
+
+    <div class="tab-body" id="tab-faces" style="display:none">
+      <h3>FACE DATABASE</h3>
+      <div id="faceList" class="hint">Loading...</div>
+      <h3 style="margin-top:16px">ADD FACE</h3>
+      <div class="field">
+        <label>NAME</label>
+        <input id="faceName" placeholder="e.g. Tony Stark">
+      </div>
+      <div class="field">
+        <label>EMBEDDING (JSON ARRAY)</label>
+        <textarea id="faceEmbedding" placeholder='[0.1, 0.2, 0.3, ...]'></textarea>
+      </div>
+      <button id="faceBtn" class="btn primary" style="width:100%">SAVE FACE</button>
+    </div>
+
+    <div class="tab-body" id="tab-system" style="display:none">
+      <h3>SYSTEM</h3>
+      <div class="kv" id="sysInfo">Loading...</div>
+      <button id="testVoiceBtn" class="btn" style="width:100%; margin-top:12px">TEST VOICE</button>
+      <h3 style="margin-top:16px">ACCESS TOKEN</h3>
+      <div class="field">
+        <input id="tokenInput" type="password" placeholder="JARVIS_TOKEN (leave blank for local)">
+      </div>
+      <button id="tokenSaveBtn" class="btn" style="width:100%">SAVE TOKEN</button>
+      <h3 style="margin-top:16px">SKILLS (<span id="skillCount">0</span>)</h3>
+      <div class="chips" id="skillChips"></div>
+    </div>
+  </aside>
+</main>
+
+<div id="statusline">J.A.R.V.I.S. V4 Agent Core</div>
+
+<script>
+const SLIDERS = ["humor", "sarcasm", "warmth", "energy", "formality", "curiosity"];
+const TABS = ["quick", "personality", "schedule", "teach", "feedback", "faces", "system"];
+const QUICK = {
+  "SYSTEM": [
+    ["What time is it?", "what time is it"],
+    ["Today's date", "what is the date today"],
+    ["Health check", "how are you"],
+    ["Uptime", "how long has the system been on"],
+    ["Lock screen", "lock the screen"],
+    ["Sleep", "put the computer to sleep"],
+    ["Mute", "mute the volume"],
+    ["Volume up", "turn the volume up"],
+    ["Volume down", "lower the volume"],
+  ],
+  "MEDIA": [
+    ["Play", "play some music"],
+    ["Pause", "pause the music"],
+    ["Next", "skip to the next song"],
+    ["Previous", "go back to the previous track"],
+    ["Stop", "stop the music"],
+    ["Open YouTube", "open youtube"],
+    ["Search YouTube", "search youtube for iron man trailer"],
+  ],
+  "WEB": [
+    ["Google it", "google iron man"],
+    ["Open Gmail", "open gmail"],
+    ["Open Netflix", "open netflix"],
+    ["Open Maps", "open maps"],
+  ],
+  "EMAIL": [
+    ["Read email", "read my email"],
+    ["Summarize email", "summarize my emails"],
+  ],
+  "SMART HOME": [
+    ["Lights on", "turn on the kitchen lights"],
+    ["Lights off", "turn off the kitchen lights"],
+    ["Lock door", "lock the door"],
+    ["Thermostat 72", "set the thermostat to 72"],
+  ],
+  "FILES & DOCS": [
+    ["List files", "list the files"],
+    ["New Word doc", "create a new word document"],
+    ["Find file", "find a file on the computer"],
+  ],
+  "CAMERA & MOBILE": [
+    ["Take picture", "take a picture with the camera"],
+    ["List devices", "list my connected devices"],
+    ["Phone screenshot", "take a screenshot of the phone"],
+  ],
+  "CODE": [
+    ["Scaffold app", "scaffold a python app"],
+  ],
+  "REMINDERS": [
+    ["Remind me", "remind me to call mom"],
+    ["Set alarm", "set an alarm for 7 am"],
+  ],
+};
+const PRESETS = {
+  default:  {humor: 0.5, sarcasm: 0.3, warmth: 0.6, energy: 0.5, formality: 0.4, curiosity: 0.6},
+  witty:    {humor: 0.9, sarcasm: 0.8, warmth: 0.5, energy: 0.7, formality: 0.2, curiosity: 0.7},
+  warm:     {humor: 0.6, sarcasm: 0.1, warmth: 0.95, energy: 0.5, formality: 0.2, curiosity: 0.6},
+  professional: {humor: 0.2, sarcasm: 0.1, warmth: 0.4, energy: 0.5, formality: 0.9, curiosity: 0.4},
+};
+
+const $ = (id) => document.getElementById(id);
+let currentValues = Object.assign({}, PRESETS.default);
+let ws = null;
+let wsTimer = null;
+let recorder = null;
+let audioEl = null;
+let speakOn = localStorage.getItem("jarvisSpeak") === null
+  ? true
+  : localStorage.getItem("jarvisSpeak") === "1";
+let token = localStorage.getItem("jarvisToken") || "";
+let unlocked = false;
+
+function unlockAudio() {
+  if (unlocked) return;
+  unlocked = true;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) { const c = new Ctx(); c.resume().catch(() => {}); }
+  } catch (e) {}
+}
+document.addEventListener("pointerdown", unlockAudio, {once: true});
+document.addEventListener("keydown", unlockAudio, {once: true});
+
+function applySpeakState() {
+  const b = $("speakBtn");
+  b.textContent = speakOn ? "VOICE ON" : "VOICE OFF";
+  b.className = "btn mic" + (speakOn ? " rec" : "");
+}
+
+function authHeaders() {
+  return token ? {"Authorization": "Bearer " + token} : {};
+}
+
+function api(path, opts) {
+  const headers = Object.assign({"Content-Type": "application/json"}, authHeaders());
+  if (opts && opts.headers) Object.assign(headers, opts.headers);
+  return fetch(path, Object.assign({headers: headers}, opts))
+    .then(r => {
+      if (r.status === 401) { setStatus("auth required - set token in SYSTEM tab"); throw new Error("401"); }
+      return r.json();
+    });
+}
+
+function playAudio(base64) {
+  if (!base64) return;
+  try {
+    const bstr = atob(base64);
+    const bytes = new Uint8Array(bstr.length);
+    for (let i = 0; i < bstr.length; i++) bytes[i] = bstr.charCodeAt(i);
+    const blob = new Blob([bytes], {type: "audio/mpeg"});
+    const url = URL.createObjectURL(blob);
+    if (!audioEl) audioEl = new Audio();
+    audioEl.volume = 1;
+    audioEl.src = url;
+    const p = audioEl.play();
+    if (p) p.catch((err) => {
+      setStatus("audio blocked: click once on the page first (" + err.name + ")");
+    });
+  } catch (err) {
+    setStatus("audio decode failed: " + err.message);
+  }
+}
+
+function speak(text) {
+  if (!speakOn || !text) return;
+  api("/tts", {method: "POST", body: JSON.stringify({text: text})})
+    .then(d => {
+      if (d.audio_base64) { playAudio(d.audio_base64); }
+      else if (d.narration) { setStatus("voice: " + d.narration); }
+    })
+    .catch(() => setStatus("speech synthesis failed"));
+}
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function addMessage(role, text, meta) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.textContent = text;
+  if (meta) {
+    const m = document.createElement("span");
+    m.className = "meta";
+    m.textContent = meta;
+    div.appendChild(m);
+  }
+  $("messages").appendChild(div);
+  $("messages").scrollTop = $("messages").scrollHeight;
+}
+
+function setStatus(text) { $("statusline").textContent = text; }
+
+function setConn(on) {
+  const b = $("connBadge");
+  b.textContent = on ? "online" : "offline";
+  b.className = "badge " + (on ? "on" : "off");
+}
+
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const q = token ? ("?token=" + encodeURIComponent(token)) : "";
+  ws = new WebSocket(proto + "//" + location.host + "/ws" + q);
+  ws.onopen = () => { setConn(true); setStatus("WebSocket connected"); };
+  ws.onmessage = (e) => handleWS(JSON.parse(e.data));
+  ws.onclose = () => {
+    setConn(false);
+    setStatus("WebSocket disconnected - using REST");
+    wsTimer = setTimeout(connectWS, 3000);
+  };
+  ws.onerror = () => { ws.close(); };
+}
+
+function handleWS(d) {
+  switch (d.type) {
+    case "command_result":
+      if (d.success) {
+        addMessage("jarvis", d.narration, metaOf(d));
+        speak(d.narration);
+      } else {
+        addMessage("err", d.narration || d.message, metaOf(d));
+        speak(d.narration || d.message);
+      }
+      break;
+    case "transcription":
+      setStatus("heard: " + d.text);
+      break;
+    case "voice_response":
+      if (d.text) addMessage("jarvis", d.text, "voice - " + d.intent);
+      if (d.audio_base64) playAudio(d.audio_base64);
+      break;
+    case "voice_status":
+    case "wake_detected":
+      setStatus("listening...");
+      break;
+    case "personality_state":
+      for (const k in d.sliders) setSliderValue(k, d.sliders[k]);
+      break;
+    case "teach_result":
+      addMessage("jarvis", d.success ? "Learned. I will remember that." : "Teach failed.", "teach");
+      break;
+    case "reminder_due":
+      addMessage("jarvis", (d.kind === "alarm" ? "Alarm" : "Reminder") +
+        " is due: " + (d.when || "now"), "schedule");
+      speak("Alarm at " + (d.when || "now") + " is now due, sir.");
+      break;
+    case "error":
+      addMessage("err", d.message, "system");
+      break;
+  }
+}
+
+function metaOf(d) {
+  const src = d.source ? d.source : "skill";
+  const conf = d.confidence !== undefined ? " conf " + (d.confidence * 100).toFixed(0) + "%" : "";
+  return "intent: " + d.intent + " via " + src + conf;
+}
+
+function sendText(text) {
+  text = (text || "").trim();
+  if (!text) return;
+  addMessage("user", text);
+  $("input").value = "";
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({type: "text_command", text: text}));
+  } else {
+    api("/command", {method: "POST", body: JSON.stringify({text: text})})
+      .then(d => {
+        if (d.success) {
+          addMessage("jarvis", d.narration, metaOf(d));
+          speak(d.narration);
+        } else {
+          addMessage("err", d.narration || "No response", metaOf(d));
+          speak(d.narration || "No response");
+        }
+      })
+      .catch(err => addMessage("err", "Request failed: " + err, "network"));
+  }
+}
+
+$("sendBtn").onclick = () => sendText($("input").value);
+$("input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendText($("input").value); }
+});
+
+$("speakBtn").onclick = () => {
+  speakOn = !speakOn;
+  localStorage.setItem("jarvisSpeak", speakOn ? "1" : "0");
+  applySpeakState();
+  setStatus(speakOn ? "voice replies on (JARVIS voice)" : "voice replies off");
+};
+
+function buildSliders() {
+  const wrap = $("sliders");
+  wrap.innerHTML = "";
+  for (const key of SLIDERS) {
+    const row = document.createElement("div");
+    row.className = "slider-row";
+    row.innerHTML =
+      '<div class="top"><span>' + key + '</span><span class="val" id="val-' + key + '">' + currentValues[key] + '</span></div>' +
+      '<input type="range" id="slider-' + key + '" min="0" max="1" step="0.05" value="' + currentValues[key] + '">';
+    const range = row.querySelector("input");
+    range.addEventListener("input", () => {
+      currentValues[key] = parseFloat(range.value);
+      $("val-" + key).textContent = currentValues[key].toFixed(2);
+      savePersonality();
+    });
+    wrap.appendChild(row);
+  }
+}
+
+function setSliderValue(key, val) {
+  currentValues[key] = val;
+  const range = $("slider-" + key);
+  if (range) range.value = val;
+  const v = $("val-" + key);
+  if (v) v.textContent = Number(val).toFixed(2);
+}
+
+function savePersonality() {
+  api("/personality", {method: "PUT", body: JSON.stringify(currentValues)})
+    .then(d => { for (const k in d) setSliderValue(k, d[k]); setStatus("Personality updated"); })
+    .catch(() => setStatus("Failed to save personality"));
+}
+
+function loadPersonality() {
+  api("/personality").then(d => {
+    for (const k in d) setSliderValue(k, d[k]);
+  });
+}
+
+document.querySelectorAll("nav.tabs button").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("nav.tabs button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    for (const t of TABS) {
+      $("tab-" + t).style.display = t === btn.dataset.tab ? "" : "none";
+    }
+  };
+});
+
+function buildQuick() {
+  const wrap = $("quickGroups");
+  wrap.innerHTML = "";
+  for (const group in QUICK) {
+    const title = document.createElement("h3");
+    title.textContent = group;
+    wrap.appendChild(title);
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px";
+    for (const [label, text] of QUICK[group]) {
+      const b = document.createElement("button");
+      b.className = "btn";
+      b.textContent = label;
+      b.onclick = () => sendText(text);
+      grid.appendChild(b);
+    }
+    wrap.appendChild(grid);
+  }
+}
+
+function loadSchedule() {
+  api("/schedule").then(d => {
+    const items = d.items || [];
+    if (items.length === 0) {
+      $("scheduleList").textContent = "Nothing scheduled. Try a reminder or an alarm.";
+      return;
+    }
+    $("scheduleList").innerHTML = items.map(i =>
+      '<div class="kv">' + (i.kind === "alarm" ? "ALARM" : "REMINDER") +
+      ' &mdash; ' + esc(i.task) + (i.when ? " (" + esc(i.when) + ")" : "") + "</div>"
+    ).join("");
+  }).catch(() => $("scheduleList").textContent = "Could not load schedule.");
+}
+
+$("scheduleRefresh").onclick = loadSchedule;
+$("scheduleClear").onclick = () => {
+  api("/schedule/clear", {method: "POST", body: "{}"}).then(d => {
+    addMessage("jarvis", d.narration || "Schedule cleared.", "schedule");
+    loadSchedule();
+  });
+};
+$("clearChat").onclick = () => { $("messages").innerHTML = ""; };
+$("tokenInput").value = token;
+$("tokenSaveBtn").onclick = () => {
+  token = $("tokenInput").value.trim();
+  if (token) { localStorage.setItem("jarvisToken", token); }
+  else { localStorage.removeItem("jarvisToken"); }
+  setStatus(token ? "token saved - reloading connection" : "token cleared");
+  ws.close();
+  connectWS();
+};
+$("testVoiceBtn").onclick = () => {
+  setStatus("synthesizing JARVIS voice...");
+  speak("Good afternoon, sir. All systems are online and ready to serve.");
+};
+
+document.querySelectorAll("[data-preset]").forEach(btn => {
+  btn.onclick = () => {
+    const p = PRESETS[btn.dataset.preset];
+    for (const k in p) currentValues[k] = p[k];
+    for (const k in p) setSliderValue(k, p[k]);
+    savePersonality();
+  };
+});
+
+$("teachBtn").onclick = () => {
+  const text = $("teachText").value.trim();
+  const intent = $("teachIntent").value.trim();
+  if (!text || !intent) { setStatus("Teach needs both phrase and intent"); return; }
+  api("/teach", {method: "POST", body: JSON.stringify({text: text, intent: intent})})
+    .then(d => {
+      addMessage("jarvis", d.narration, "teach");
+      $("teachText").value = "";
+      $("teachIntent").value = "";
+    })
+    .catch(err => addMessage("err", "Teach failed: " + err, "network"));
+};
+
+$("fbBtn").onclick = () => {
+  const payload = {
+    text: $("fbText").value.trim(),
+    intent: $("fbIntent").value.trim() || "chat",
+    rating: $("fbRating").value,
+    correction: $("fbCorrection").value.trim(),
+  };
+  if (!payload.text) { setStatus("Feedback needs the original phrase"); return; }
+  api("/feedback", {method: "POST", body: JSON.stringify(payload)})
+    .then(d => {
+      addMessage("jarvis", d.narration, "feedback");
+      $("fbText").value = ""; $("fbCorrection").value = "";
+    })
+    .catch(err => addMessage("err", "Feedback failed: " + err, "network"));
+};
+
+function loadFaces() {
+  api("/faces").then(d => {
+    if (!d.identities || d.identities.length === 0) {
+      $("faceList").textContent = "No faces learned yet.";
+      return;
+    }
+    $("faceList").innerHTML = d.identities.map(n =>
+      '<span class="chip">' + esc(n) + "</span>").join(" ");
+  }).catch(() => $("faceList").textContent = "Could not load faces.");
+}
+
+$("faceBtn").onclick = () => {
+  const name = $("faceName").value.trim();
+  const raw = $("faceEmbedding").value.trim();
+  if (!name || !raw) { setStatus("Face needs name and embedding"); return; }
+  let embedding;
+  try { embedding = JSON.parse(raw); } catch (e) { setStatus("Embedding must be valid JSON"); return; }
+  api("/faces", {method: "POST", body: JSON.stringify({name: name, embedding: embedding})})
+    .then(d => {
+      addMessage("jarvis", d.narration, "faces");
+      $("faceName").value = ""; $("faceEmbedding").value = "";
+      loadFaces();
+    })
+    .catch(err => addMessage("err", "Face save failed: " + err, "network"));
+};
+
+function loadSystem() {
+  api("/health").then(d => {
+    $("sysInfo").innerHTML =
+      "<b>status</b> " + esc(d.status) + "<br>" +
+      "<b>skills</b> " + d.skills + "<br>" +
+      "<b>profile</b> " + esc(d.profile) + "<br>" +
+      "<b>services</b> " + esc((d.services || []).join(", "));
+  });
+  api("/model/status").then(d => {
+    $("modelBadge").textContent = "model: " + d.chat_backend;
+  }).catch(() => {});
+  api("/skills").then(d => {
+    const names = d.all_registered || d.enabled || [];
+    $("skillCount").textContent = names.length;
+    $("skillChips").innerHTML = names.map(n => '<span class="chip">' + esc(n) + "</span>").join(" ");
+  });
+}
+
+function resample16k(input, fromRate) {
+  const target = 16000;
+  if (fromRate === target) return input;
+  const outLen = Math.max(1, Math.round(input.length * target / fromRate));
+  const out = new Float32Array(outLen);
+  const step = input.length / outLen;
+  for (let i = 0; i < outLen; i++) {
+    const pos = i * step;
+    const i0 = Math.floor(pos);
+    const i1 = Math.min(input.length - 1, i0 + 1);
+    const frac = pos - i0;
+    out[i] = input[i0] * (1 - frac) + input[i1] * frac;
+  }
+  return out;
+}
+
+function toBase64Int16(float32) {
+  const n = float32.length;
+  const buf = new Int16Array(n);
+  for (let i = 0; i < n; i++) {
+    const s = Math.max(-1, Math.min(1, float32[i]));
+    buf[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  const bytes = new Uint8Array(buf.buffer);
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+async function toggleMic() {
+  if (recorder) {
+    const r = recorder;
+    recorder = null;
+    r.node.disconnect();
+    r.src.disconnect();
+    r.stream.getTracks().forEach(t => t.stop());
+    $("voiceBtn").classList.remove("rec");
+    $("voiceBtn").textContent = "MIC";
+    const len = r.raw.reduce((n, a) => n + a.length, 0);
+    if (len < 1600) { setStatus("Too short to hear"); return; }
+    const all = new Float32Array(len);
+    let o = 0;
+    for (const a of r.raw) { all.set(a, o); o += a.length; }
+    const pcm = resample16k(all, r.actx.sampleRate);
+    const data = toBase64Int16(pcm);
+    setStatus("processing voice...");
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({type: "voice_audio", data: data, sample_rate: 16000, after_wake: true}));
+    } else {
+      setStatus("WebSocket offline - voice needs a live connection");
+    }
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStatus("Microphone not available in this browser");
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true},
+    });
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const actx = new Ctx();
+    const src = actx.createMediaStreamSource(stream);
+    const node = actx.createScriptProcessor(4096, 1, 1);
+    const raw = [];
+    node.onaudioprocess = (e) => {
+      raw.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    };
+    src.connect(node);
+    node.connect(actx.destination);
+    recorder = {stream: stream, actx: actx, src: src, node: node, raw: raw};
+    $("voiceBtn").classList.add("rec");
+    $("voiceBtn").textContent = "STOP";
+    setStatus("recording - click STOP when done");
+  } catch (err) {
+    setStatus("Mic error: " + err.message);
+  }
+}
+
+$("voiceBtn").onclick = toggleMic;
+
+buildSliders();
+loadPersonality();
+loadFaces();
+loadSystem();
+loadSchedule();
+buildQuick();
+applySpeakState();
+connectWS();
+</script>
+</body>
+</html>

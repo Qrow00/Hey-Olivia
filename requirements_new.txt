@@ -1,0 +1,26 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.10.0
+httpx>=0.27.0
+
+# --- chat (choose one) ---
+# Option A: out-of-process llama-server (recommended, no build needed)
+#   pip install llama-cpp-python  # only needed for in-process GGUF (Option B)
+# Option B: in-process GGUF
+llama-cpp-python>=0.2.0
+
+# --- voice (optional, lazy-loaded) ---
+faster-whisper>=1.0.0
+edge-tts>=6.1.9
+openwakeword>=0.6.0
+
+# --- vision (optional, lazy-loaded) ---
+opencv-python>=4.10.0
+onnxruntime>=1.28.0
+
+# --- system / integrations (optional) ---
+psutil>=5.9.0
+paho-mqtt>=1.6.1
+
+# --- test ---
+pytest>=8.0.0
